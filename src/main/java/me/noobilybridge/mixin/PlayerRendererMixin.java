@@ -49,13 +49,10 @@ public abstract class PlayerRendererMixin extends LivingEntityRenderer<AbstractC
             if (info != null) {
                 int stamina = getStaminaFromTablist(info);
                 if (stamina > 0) {
-
                     ChatFormatting formatting = getStaminaFormatting(stamina);
-
                     return Component.literal(player.getName().getString() + " | ")
                             .append(Component.literal(String.valueOf(stamina)).withStyle(formatting));
                 }
-                return player.getName();
             }
         }
         return null;
