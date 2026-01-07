@@ -1,37 +1,36 @@
 {
-	"schemaVersion": 1,
-	"id": "stamina-display",
-	"version": "${version}",
-	"name": "Stamina Display",
-	"description": "This mod makes it so that Blockey Hockey stamina is rendered in player nametags",
-	"authors": [
-		"The Blockey Hockey Staff"
-	],
-	"contact": {
-		"homepage": "https://store.blockey.net/",
-		"sources": "https://github.com/Youppii/StaminaDisplay"
-	},
-	"license": "CC0-1.0",
-	"icon": "assets/stamina-display/icon.png",
-	"environment": "*",
-	"entrypoints": {
-		"main": [
-			"me.noobilybridge.StaminaDisplay"
-		],
-		"fabric-datagen": [
-			"me.noobilybridge.StaminaDisplayDataGenerator"
-		]
-	},
-	"mixins": [
-		"stamina-display.mixins.json"
-	],
-	"depends": {
-		"fabricloader": ">=0.16.14",
-		"minecraft": "~1.19.4",
-		"java": ">=17",
-		"fabric-api": "*"
-	},
-	"suggests": {
-		"another-mod": "*"
-	}
+  "schemaVersion": 1,
+  "id": "stamina-display",
+  "version": "${version}",
+  "name": "Stamina Display",
+  "description": "This mod makes it so that Blockey Hockey stamina is rendered in player nametags",
+  "authors": [
+    "The Blockey Hockey Staff"
+  ],
+  "contact": {
+    "homepage": "https://store.blockey.net/",
+    "sources": "https://github.com/Youppii/StaminaDisplay"
+  },
+
+  "license": "CC0-1.0",
+  "icon": "assets/stamina-display/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "modmenu": [
+      "me.noobilybridge.config.ModMenuIntegration"
+    ],
+    "client": [
+      "me.noobilybridge.StaminaDisplay"
+    ]
+  },
+  "mixins": [
+    "stamina-display.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "~1.19.4",
+    "java": ">=17",
+    "fabric-api": "*",
+    "yet_another_config_lib_v3": "*"
+  }
 }
