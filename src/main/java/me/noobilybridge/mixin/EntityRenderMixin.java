@@ -44,8 +44,11 @@ public abstract class EntityRenderMixin<T extends Entity> {
 
     @Inject(method = "renderLabelIfPresent", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;pop()V"))
     private void AUGHHH(T entity, Text name, MatrixStack ms, VertexConsumerProvider vcp, int light, CallbackInfo ci) {
+        if(!(entity instanceof AbstractClientPlayerEntity)) {
+            return;
+        }
         int yeah = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
-        if (entity instanceof AbstractClientPlayerEntity && yeah != 0) {
+        if (yeah != 0) {
             setupRender(ms);
             Color c = StaminaConfig.INSTANCE.getConfig().mainColor;
             RenderSystem.setShaderColor(c.getRed(), c.getGreen(), c.getBlue(), c.getAlpha());
