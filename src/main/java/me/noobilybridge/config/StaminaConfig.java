@@ -25,6 +25,8 @@ public class StaminaConfig {
     @ConfigEntry
     public Color mainColor = Color.WHITE;
     @ConfigEntry
+    public Color emptyMainColor = Color.RED;
+    @ConfigEntry
     public float scale = 0.5F;
 
     public static Screen getScreen(Screen parent) {
@@ -41,6 +43,11 @@ public class StaminaConfig {
                                 .name(Text.of("Main Color"))
                                 .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
                                 .binding(Color.WHITE, () -> config.mainColor, color -> config.mainColor = color)
+                                .build())
+                        .option(Option.<Color>createBuilder()
+                                .name(Text.of("Empty Color"))
+                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                .binding(Color.RED, () -> config.emptyMainColor, color -> config.emptyMainColor = color)
                                 .build())
                         .option(Option.<Float>createBuilder()
                                 .name(Text.of("Scale"))
