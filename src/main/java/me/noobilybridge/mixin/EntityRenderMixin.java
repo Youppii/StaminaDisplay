@@ -6,16 +6,14 @@ import me.noobilybridge.config.StaminaConfig;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawableHelper;
-import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.render.*;
+import net.minecraft.client.render.entity.EntityRenderDispatcher;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.ColorHelper;
 import net.minecraft.util.math.MathHelper;
@@ -34,44 +32,60 @@ import java.awt.*;
 @Mixin(EntityRenderer.class)
 public abstract class EntityRenderMixin<T extends Entity> {
 
-
     @Shadow
     @Final
     private TextRenderer textRenderer;
 
-    @Inject(method = "renderLabelIfPresent", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;pop()V"))
-    private void AUGHHH(T entity, Text name, MatrixStack ms, VertexConsumerProvider vcp, int light, CallbackInfo ci) {
+
+    @Inject(method = "renderLabelIfPresent", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;pop()V"), locals = LocalCapture.CAPTURE_FAILHARD)
+    private void AUGHHH(T entity, Text name, MatrixStack ms, VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
         if (!(entity instanceof AbstractClientPlayerEntity)) {
             return;
         }
-        int yeah = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
-        StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, (float) yeah);
-        float a = StaminaDisplay.staminaValues.get(entity);
-        StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, (float) StaminaDisplay.ease(a, yeah, 15));
-        if (yeah != 0) {
-            setupRender(ms);
-            Color c = getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, StaminaConfig.INSTANCE.getConfig().mainColor, StaminaDisplay.staminaValues.get(entity) / 20);
-
-            DrawableHelper.fill(ms, (int) (-textRenderer.getWidth(name) * 0.5), -10, (int) (textRenderer.getWidth(name) * 0.75F), -5, getColor(StaminaConfig.INSTANCE.getConfig().outlineColor));
-            ms.translate(0, 0, -0.01);
-            fillFloat(ms, (float) ((int)(-textRenderer.getWidth(name) * 0.5) + 1), (float) -9, (float) MathHelper.lerp(StaminaDisplay.staminaValues.get(entity) / 20F, ((int)-textRenderer.getWidth(name) * 0.5) + 1, (int)textRenderer.getWidth(name) * 0.75F - 1), -6, 0, getColor(getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, StaminaConfig.INSTANCE.getConfig().mainColor, StaminaDisplay.staminaValues.get(entity) / 20)));
-            ((BossBarAccessor) MinecraftClient.getInstance().inGameHud.getBossBarHud()).getBossBars().forEach((uuid, clientBossBar) -> {
-                try {
-                    Color home = new Color(clientBossBar.getName().getSiblings().get(1).getSiblings().get(0).getStyle().getColor().getRgb());
-                    Color away = new Color(clientBossBar.getName().getSiblings().get(3).getSiblings().get(0).getStyle().getColor().getRgb());
-                    int yeahhh = getTeamFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
-                    ms.translate(0, 0, 0.01);
-                    //TODO: fix team colors and scaling
-                    DrawableHelper.drawBorder(ms, -textRenderer.getWidth(name)-2, -3, textRenderer.getWidth(name) * 2 + 6, 21, getColor(yeahhh == 0 ? home : away));
-                } catch (Exception ignored) {
-                }
-            });
-            ms.translate(0, 0, -0.01);
-            RenderSystem.setShaderColor(c.getRed() / 255F, c.getGreen()  / 255F, c.getBlue()  / 255F, c.getAlpha() / 255F);
-            DrawableHelper.drawTexture(ms, (int) (-textRenderer.getWidth(name) * 0.75) + 1, -16, 0, 0, 11, 15, 11, 15);
-            RenderSystem.setShaderColor(1, 1, 1, 1);
-            postRender(ms);
+        int staminaVal;
+        if (MinecraftClient.getInstance().player.equals(entity)) {
+            staminaVal = ((AbstractClientPlayerEntity) entity).getHungerManager().getFoodLevel();
+        } else {
+            staminaVal = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
         }
+        StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, (float) staminaVal);
+        float lastStamina = StaminaDisplay.staminaValues.get(entity);
+        StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, (float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed));
+
+        setupRender(ms);
+        ((BossBarAccessor) MinecraftClient.getInstance().inGameHud.getBossBarHud()).getBossBars().forEach((uuid, clientBossBar) -> {
+            try {
+                Color home = new Color(clientBossBar.getName().getSiblings().get(1).getSiblings().get(0).getStyle().getColor().getRgb());
+                Color away = new Color(clientBossBar.getName().getSiblings().get(3).getSiblings().get(0).getStyle().getColor().getRgb());
+                int team = getTeamFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
+                if (team != -1) {
+                    DrawableHelper.drawBorder(ms, -textRenderer.getWidth(name) / 2 - 2, -2, textRenderer.getWidth(name) + 4, 12, getColor(team == 0 ? home : away));
+                    //thicker border option
+                    DrawableHelper.drawBorder(ms, -textRenderer.getWidth(name) / 2 - 3, -3, textRenderer.getWidth(name) + 6, 14, getColor(team == 0 ? home : away));
+                }
+            } catch (Exception ignored) {
+            }
+        });
+        ms.push();
+        ms.translate(0, -StaminaConfig.INSTANCE.getConfig().verticalOffset, 0);
+
+        Color barColor = getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, StaminaConfig.INSTANCE.getConfig().mainColor, StaminaDisplay.staminaValues.get(entity) / 20);
+        float p = StaminaConfig.INSTANCE.getConfig().paddingAmount;
+        renderRoundedQuad(ms, StaminaConfig.INSTANCE.getConfig().outlineColor, (-StaminaConfig.INSTANCE.getConfig().width / 2F) - p, -StaminaConfig.INSTANCE.getConfig().height / 2F - p, (StaminaConfig.INSTANCE.getConfig().width / 2F) + p, StaminaConfig.INSTANCE.getConfig().height / 2F + p, StaminaConfig.INSTANCE.getConfig().cornerRounding, 10);
+        if (StaminaDisplay.staminaValues.get(entity) > 1) {
+            ms.translate(0, 0, -0.1F);
+            renderRoundedQuad(ms, getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, StaminaConfig.INSTANCE.getConfig().mainColor, StaminaDisplay.staminaValues.get(entity) / 20), -StaminaConfig.INSTANCE.getConfig().width / 2, -StaminaConfig.INSTANCE.getConfig().height / 2F, MathHelper.lerp(StaminaDisplay.staminaValues.get(entity) / 20F, -StaminaConfig.INSTANCE.getConfig().width / 2, StaminaConfig.INSTANCE.getConfig().width / 2), StaminaConfig.INSTANCE.getConfig().height / 2F, StaminaConfig.INSTANCE.getConfig().cornerRounding, 10);
+        }
+
+//        RenderSystem.setShaderColor(0, 0.5F, 0, 1);
+//        RenderSystem.setShaderTexture(0, new Identifier("stamina-display:textures/icon_filled.png"));
+//        DrawableHelper.drawTexture(ms, (int) (-textRenderer.getWidth(name) * 0.75) + 1, (int) (-StaminaConfig.INSTANCE.getConfig().verticalOffset) - 1, 0, 0, 11, 15, 11, 15);
+//        RenderSystem.setShaderColor(1, 1, 1, 1);
+//        RenderSystem.setShaderTexture(0, new Identifier("stamina-display:textures/icon_inner.png"));
+//        ms.translate(0, 0, -0.01);
+//        DrawableHelper.drawTexture(ms, (int) (-textRenderer.getWidth(name) * 0.75) + 1, (int) (-StaminaConfig.INSTANCE.getConfig().verticalOffset) - 1, (float) 0, (float) 0, 11, (int) (15 * StaminaDisplay.staminaValues.get(entity) / 20F), 11, 15);
+        ms.pop();
+        postRender(ms);
     }
 
     @Unique
@@ -80,39 +94,22 @@ public abstract class EntityRenderMixin<T extends Entity> {
         RenderSystem.disableBlend();
         ms.pop();
     }
+
     @Unique
     private static Color getLerpedColor(Color c1, Color c2, float percent) {
         return new Color(MathHelper.clamp(MathHelper.lerp(percent, c1.getRed(), c2.getRed()), 0, 255), MathHelper.clamp(MathHelper.lerp(percent, c1.getGreen(), c2.getGreen()), 0, 255), MathHelper.clamp(MathHelper.lerp(percent, c1.getBlue(), c2.getBlue()), 0, 255));
     }
+
     @Unique
-    private static void fillFloat(MatrixStack matrices, float x1, float y1, float x2, float y2, float z, int color) {
-        Matrix4f matrix4f = matrices.peek().getPositionMatrix();
-        if (x1 < x2) {
-            float i = x1;
-            x1 = x2;
-            x2 = i;
-        }
-
-        if (y1 < y2) {
-            float i = y1;
-            y1 = y2;
-            y2 = i;
-        }
-
-        float f = (float) ColorHelper.Argb.getAlpha(color) / 255.0F;
-        float g = (float) ColorHelper.Argb.getRed(color) / 255.0F;
-        float h = (float) ColorHelper.Argb.getGreen(color) / 255.0F;
-        float j = (float) ColorHelper.Argb.getBlue(color) / 255.0F;
+    private static void drawGoodTexture(Matrix4f matrix, float x0, float x1, float y0, float y1, float z, float u0, float u1, float v0, float v1) {
+        RenderSystem.setShader(GameRenderer::getPositionTexProgram);
         BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
-        RenderSystem.enableBlend();
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        bufferBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        bufferBuilder.vertex(matrix4f, (float)x1, (float)y1, (float)z).color(g, h, j, f).next();
-        bufferBuilder.vertex(matrix4f, (float)x1, (float)y2, (float)z).color(g, h, j, f).next();
-        bufferBuilder.vertex(matrix4f, (float)x2, (float)y2, (float)z).color(g, h, j, f).next();
-        bufferBuilder.vertex(matrix4f, (float)x2, (float)y1, (float)z).color(g, h, j, f).next();
+        bufferBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE);
+        bufferBuilder.vertex(matrix, x0, y0, z).texture(u0, v0).next();
+        bufferBuilder.vertex(matrix, x0, y1, z).texture(u0, v1).next();
+        bufferBuilder.vertex(matrix, x1, y1, z).texture(u1, v1).next();
+        bufferBuilder.vertex(matrix, x1, y0, z).texture(u1, v0).next();
         BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
-        RenderSystem.disableBlend();
     }
 
     @Unique
@@ -121,8 +118,7 @@ public abstract class EntityRenderMixin<T extends Entity> {
         RenderSystem.enableDepthTest();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        ms.scale(StaminaConfig.INSTANCE.getConfig().scale, StaminaConfig.INSTANCE.getConfig().scale, StaminaConfig.INSTANCE.getConfig().scale);
-        RenderSystem.setShaderTexture(0, new Identifier("stamina-display:textures/icon.png"));
+//        RenderSystem.setShaderTexture(0, new Identifier("stamina-display:textures/icon.png"));
     }
 
     @Unique
@@ -132,7 +128,7 @@ public abstract class EntityRenderMixin<T extends Entity> {
 
     @Unique
     private Integer getStaminaFromTablist(PlayerListEntry info) {
-        if(info == null){
+        if (info == null) {
             return 0;
         }
         Text displayName = info.getDisplayName();
@@ -167,5 +163,46 @@ public abstract class EntityRenderMixin<T extends Entity> {
             }
         }
         return -1;
+    }
+
+    @Unique
+    private static void renderRoundedQuad(MatrixStack matrices, Color c, double fromX, double fromY, double toX, double toY, double radC1, double radC2, double radC3, double radC4, double samples) {
+        int color = c.getRGB();
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        float f = (float) (color >> 24 & 255) / 255.0F;
+        float g = (float) (color >> 16 & 255) / 255.0F;
+        float h = (float) (color >> 8 & 255) / 255.0F;
+        float k = (float) (color & 255) / 255.0F;
+        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+
+        renderRoundedQuadInternal(matrix, g, h, k, f, fromX, fromY, toX, toY, radC1, radC2, radC3, radC4, samples);
+    }
+
+    @Unique
+    private static void renderRoundedQuadInternal(Matrix4f matrix, float cr, float cg, float cb, float ca, double fromX, double fromY, double toX, double toY, double radC1, double radC2, double radC3, double radC4, double samples) {
+        BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
+        bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
+
+        double[][] map = new double[][]{new double[]{toX - radC4, toY - radC4, radC4}, new double[]{toX - radC2, fromY + radC2, radC2}, new double[]{fromX + radC1, fromY + radC1, radC1}, new double[]{fromX + radC3, toY - radC3, radC3}};
+        for (int i = 0; i < 4; i++) {
+            double[] current = map[i];
+            double rad = current[2];
+            for (double r = i * 90d; r < 360 / 4d + i * 90d; r += 90 / samples) {
+                float rad1 = (float) Math.toRadians(r);
+                float sin = (float) (Math.sin(rad1) * rad);
+                float cos = (float) (Math.cos(rad1) * rad);
+                bufferBuilder.vertex(matrix, (float) current[0] + sin, (float) current[1] + cos, 0.0F).color(cr, cg, cb, ca).next();
+            }
+            float rad1 = (float) Math.toRadians(360 / 4d + i * 90d);
+            float sin = (float) (Math.sin(rad1) * rad);
+            float cos = (float) (Math.cos(rad1) * rad);
+            bufferBuilder.vertex(matrix, (float) current[0] + sin, (float) current[1] + cos, 0.0F).color(cr, cg, cb, ca).next();
+        }
+        BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
+    }
+
+    @Unique
+    private static void renderRoundedQuad(MatrixStack stack, Color c, double x, double y, double x1, double y1, double rad, double samples) {
+        renderRoundedQuad(stack, c, x, y, x1, y1, rad, rad, rad, rad, samples);
     }
 }
