@@ -9,6 +9,7 @@
   },
   "client": [
     "BossBarAccessor",
-    "EntityRenderMixin"
+    "EntityRenderMixin",
+    "InGameHudMixin"
   ]
 }
