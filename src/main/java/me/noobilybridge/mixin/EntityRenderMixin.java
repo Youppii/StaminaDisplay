@@ -40,18 +40,19 @@ public abstract class EntityRenderMixin {
     private TextRenderer textRenderer;
 
 
-
-
     @Inject(method = "renderLabelIfPresent", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;pop()V"), locals = LocalCapture.CAPTURE_FAILHARD)
     private void AUGHHH(Entity entity, Text name, MatrixStack ms, VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
         if (!(entity instanceof AbstractClientPlayerEntity)) {
             return;
         }
-        if (!StaminaDisplay.staminaValues.containsKey(entity)) {
-            return;
-        }
         if (!StaminaConfig.INSTANCE.getConfig().renderBar) {
             return;
+        }
+        if(entity.getVehicle() != null){
+            return;
+        }
+        if (!entity.equals(MinecraftClient.getInstance().player)) {
+            updateStaminaForEntity(entity);
         }
         setupRender(ms);
         ((BossBarAccessor) MinecraftClient.getInstance().inGameHud.getBossBarHud()).getBossBars().forEach((uuid, clientBossBar) -> {
@@ -60,7 +61,7 @@ public abstract class EntityRenderMixin {
                 Color away = new Color(clientBossBar.getName().getSiblings().get(3).getSiblings().get(0).getStyle().getColor().getRgb());
                 int team = getTeamFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
                 if (team != -1) {
-                    drawBorder(ms, -textRenderer.getWidth(name) / 2 - 2, -2, textRenderer.getWidth(name) + 4, 12, getColor(team == 0 ? home : away), StaminaConfig.INSTANCE.getConfig().outlineThickness);
+                    drawBorder(ms, -textRenderer.getWidth(name) / 2 - 2, -2, textRenderer.getWidth(name) + 4, 12, getColor(team == 0 ? away : home), StaminaConfig.INSTANCE.getConfig().outlineThickness);
                     //thicker border option
                 }
             } catch (Exception ignored) {
@@ -68,21 +69,17 @@ public abstract class EntityRenderMixin {
         });
         ms.push();
         ms.translate(0, -StaminaConfig.INSTANCE.getConfig().verticalOffset, 0);
-
+        ms.scale(1, 1, -1);
         float p = StaminaConfig.INSTANCE.getConfig().paddingAmount;
         renderRoundedQuad(ms, StaminaConfig.INSTANCE.getConfig().outlineColor, (-StaminaConfig.INSTANCE.getConfig().width / 2F) - p, -StaminaConfig.INSTANCE.getConfig().height / 2F - p, (StaminaConfig.INSTANCE.getConfig().width / 2F) + p, StaminaConfig.INSTANCE.getConfig().height / 2F + p, StaminaConfig.INSTANCE.getConfig().cornerRounding, 10);
         if (getStamina(entity) > 0.25) {
-            ms.translate(0, 0, -0.1F);
+            ms.translate(0, 0, 0.1F);
             renderRoundedQuad(ms, getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, StaminaConfig.INSTANCE.getConfig().mainColor, getScaledStamina(entity)), -StaminaConfig.INSTANCE.getConfig().width / 2, -StaminaConfig.INSTANCE.getConfig().height / 2F, MathHelper.lerp(getScaledStamina(entity), -StaminaConfig.INSTANCE.getConfig().width / 2, StaminaConfig.INSTANCE.getConfig().width / 2), StaminaConfig.INSTANCE.getConfig().height / 2F, StaminaConfig.INSTANCE.getConfig().cornerRounding, 10);
         }
         if (StaminaConfig.INSTANCE.getConfig().showNumber) {
-            ms.translate(0, 0, -0.1F);
-
+            ms.translate(0, 0, 0.1F);
             ms.scale(StaminaConfig.INSTANCE.getConfig().numberScale, StaminaConfig.INSTANCE.getConfig().numberScale, 1);
-            //manually draw shadow as we have reverse z
-            textRenderer.draw(ms, String.valueOf(Math.round(StaminaDisplay.getStamina(entity))), (float) -textRenderer.getWidth(String.valueOf(Math.round(StaminaDisplay.getStamina(entity)))) / 2 + 1, ((float) -textRenderer.fontHeight / 2) + 1, ColorHelper.Argb.lerp(0.75F, getColor(StaminaConfig.INSTANCE.getConfig().numberColor), 0xFF000000));
-            ms.translate(0, 0, -0.1F);
-            textRenderer.draw(ms, String.valueOf(Math.round(StaminaDisplay.getStamina(entity))), (float) -textRenderer.getWidth(String.valueOf(Math.round(StaminaDisplay.getStamina(entity)))) / 2, (float) -textRenderer.fontHeight / 2, getColor(StaminaConfig.INSTANCE.getConfig().numberColor));
+            DrawableHelper.drawCenteredTextWithShadow(ms, textRenderer, String.valueOf(Math.round(StaminaDisplay.getStamina(entity))), 0, -textRenderer.fontHeight / 2, getColor(StaminaConfig.INSTANCE.getConfig().numberColor));
             RenderSystem.setShaderTexture(0, GUI_ICONS_TEXTURE);
         }
 
@@ -96,6 +93,7 @@ public abstract class EntityRenderMixin {
         ms.pop();
         postRender(ms);
     }
+
 
     @Unique
     private static void postRender(MatrixStack ms) {

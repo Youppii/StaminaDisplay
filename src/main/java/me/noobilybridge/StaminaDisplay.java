@@ -28,8 +28,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+@SuppressWarnings("ALL")
 public class StaminaDisplay implements ClientModInitializer {
     public static Map<AbstractClientPlayerEntity, Float> staminaValues = new HashMap<>();
+    public static float clientStamina = 0F;
 
     @Override
     public void onInitializeClient() {
@@ -37,30 +39,30 @@ public class StaminaDisplay implements ClientModInitializer {
         if (StaminaConfig.INSTANCE.getConfig().iceTranslucencyDisable) {
             BlockRenderLayerMap.INSTANCE.putBlocks(RenderLayer.getSolid(), Blocks.ICE, Blocks.PACKED_ICE, Blocks.FROSTED_ICE, Blocks.BLUE_ICE);
         }
-        WorldRenderEvents.BEFORE_ENTITIES.register(worldRenderContext -> {
-            for (Entity entity : worldRenderContext.world().getEntities()) {
-                if (!(entity instanceof AbstractClientPlayerEntity)) {
-                    return;
-                }
-                int staminaVal;
-                if (MinecraftClient.getInstance().player.equals(entity)) {
-                    staminaVal = ((AbstractClientPlayerEntity) entity).getHungerManager().getFoodLevel();
-                } else {
-                    staminaVal = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
-                }
-                StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, (float) staminaVal);
-                float lastStamina = StaminaDisplay.staminaValues.get(entity);
-                StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, (float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed));
-            }
+        WorldRenderEvents.START.register(worldRenderContext -> {
+            clientStamina = (float) ease(clientStamina, MinecraftClient.getInstance().player.getHungerManager().getFoodLevel(), StaminaConfig.INSTANCE.getConfig().animationSpeed);
         });
     }
 
     public static float getStamina(Entity e) {
+        if(e.equals(MinecraftClient.getInstance().player)) {
+            return clientStamina;
+        }
         return MathHelper.clamp(StaminaDisplay.staminaValues.get(e) - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20);
     }
 
     public static float getScaledStamina(Entity e) {
-        return MathHelper.clamp(StaminaDisplay.staminaValues.get(e) - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20) / getMaxStamina();
+        if(e.equals(MinecraftClient.getInstance().player)) {
+            return MathHelper.clamp(clientStamina - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20) / getMaxStamina();
+        }
+            return MathHelper.clamp(StaminaDisplay.staminaValues.get(e) - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20) / getMaxStamina();
+    }
+
+    public static void updateStaminaForEntity(Entity entity) {
+        int staminaVal = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
+        StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, (float) staminaVal);
+        float lastStamina = StaminaDisplay.staminaValues.get(entity);
+        StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, (float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed));
     }
 
     public static float getMaxStamina() {
@@ -75,7 +77,7 @@ public class StaminaDisplay implements ClientModInitializer {
     }
 
     @Unique
-    private Integer getStaminaFromTablist(PlayerListEntry info) {
+    public static int getStaminaFromTablist(PlayerListEntry info) {
         if (info == null) {
             return 0;
         }
@@ -151,6 +153,7 @@ public class StaminaDisplay implements ClientModInitializer {
         bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
 
         double[][] map = new double[][]{new double[]{toX - radC4, toY - radC4, radC4}, new double[]{toX - radC2, fromY + radC2, radC2}, new double[]{fromX + radC1, fromY + radC1, radC1}, new double[]{fromX + radC3, toY - radC3, radC3}};
+
         for (int i = 0; i < 4; i++) {
             double[] current = map[i];
             double rad = current[2];

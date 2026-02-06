@@ -10,6 +10,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawableHelper;
 import net.minecraft.client.gui.hud.InGameHud;
+import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.LivingEntity;
@@ -63,23 +64,21 @@ public abstract class InGameHudMixin {
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             renderRoundedQuad(matrices, outlineColor, (-width / 2F) - p, -height / 2F - p, (width / 2F) + p, height / 2F + p, cornerRounding, 10);
-            if (getStamina(client.player) > 0.25) {
+            //to avoid weirdness with rounded corners
+            if (clientStamina > 0.25) {
                 matrices.translate(0, 0, 0.1F);
-                var color = getLerpedColor(emptyMainColor, minColor, StaminaDisplay.getScaledStamina(client.player));
-                renderRoundedQuad(matrices, color, -width / 2, -height / 2F, MathHelper.lerp(StaminaDisplay.getScaledStamina(client.player), -width / 2, width / 2), height / 2F, cornerRounding, 10);
+                float scaledStamina = getScaledStamina(client.player);
+                var color = getLerpedColor(emptyMainColor, minColor, scaledStamina);
+                renderRoundedQuad(matrices, color, -width / 2, -height / 2F, MathHelper.lerp(scaledStamina, -width / 2, width / 2), height / 2F, cornerRounding, 10);
             }
             if (StaminaConfig.INSTANCE.getConfig().showNumber) {
                 matrices.translate(0, 0, 0.1F);
                 matrices.scale(StaminaConfig.INSTANCE.getConfig().numberScale, StaminaConfig.INSTANCE.getConfig().numberScale, 1);
-                DrawableHelper.drawCenteredTextWithShadow(matrices, MinecraftClient.getInstance().textRenderer, String.valueOf(Math.round(StaminaDisplay.getStamina(client.player))), 0, -getTextRenderer().fontHeight / 2,getColor(StaminaConfig.INSTANCE.getConfig().numberColor));
+                DrawableHelper.drawCenteredTextWithShadow(matrices, MinecraftClient.getInstance().textRenderer, String.valueOf(Math.round(clientStamina)), 0, -getTextRenderer().fontHeight / 2,getColor(StaminaConfig.INSTANCE.getConfig().numberColor));
                 RenderSystem.setShaderTexture(0, GUI_ICONS_TEXTURE);
             }
             matrices.pop();
         }
-    }
-    @Unique
-    private static int tweakTransparency(int argb) {
-        return (argb & -67108864) == 0 ? argb | 0xFF000000 : argb;
     }
 
     @ModifyConstant(
