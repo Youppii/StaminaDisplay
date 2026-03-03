@@ -1,17 +1,29 @@
 package me.noobilybridge.config;
 
+import com.google.gson.Gson;
 import dev.isxander.yacl3.api.*;
 import dev.isxander.yacl3.api.controller.ColorControllerBuilder;
+import dev.isxander.yacl3.api.controller.EnumControllerBuilder;
 import dev.isxander.yacl3.api.controller.FloatSliderControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerSliderControllerBuilder;
 import dev.isxander.yacl3.config.ConfigEntry;
 import dev.isxander.yacl3.config.GsonConfigInstance;
+import dev.isxander.yacl3.impl.controller.EnumControllerBuilderImpl;
+import dev.isxander.yacl3.impl.controller.StringControllerBuilderImpl;
 import dev.isxander.yacl3.impl.controller.TickBoxControllerBuilderImpl;
+import me.noobilybridge.StaminaDisplay;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import org.spongepowered.include.com.google.gson.JsonSyntaxException;
 
 import java.awt.*;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public class StaminaConfig {
     public static GsonConfigInstance<StaminaConfig> INSTANCE = GsonConfigInstance.createBuilder(StaminaConfig.class).setPath(FabricLoader.getInstance().getConfigDir().resolve("staminadisplay.json")).build();
@@ -19,15 +31,29 @@ public class StaminaConfig {
     @ConfigEntry
     public Color outlineColor = Color.BLACK;
     @ConfigEntry
+    public Color secondaryOutlineColor = Color.BLACK;
+    @ConfigEntry
+    public boolean useTeamForMain = false;
+    @ConfigEntry
     public Color mainColor = Color.WHITE;
+    @ConfigEntry
+    public boolean evilMainColor = false;
+    @ConfigEntry
+    public Color secondaryMainColor = Color.WHITE;
+    @ConfigEntry
+    public Color hungerBarMainColor = Color.WHITE;
+    @ConfigEntry
+    public Color hungerBarSecondaryColor = Color.WHITE;
     @ConfigEntry
     public Color emptyMainColor = Color.RED;
     @ConfigEntry
     public float width = 0.5F;
     @ConfigEntry
-    public float trimLeftWidth = 0F;
-    @ConfigEntry
     public float height = 0.5F;
+    @ConfigEntry
+    public float verticalOffset = 0.25F;
+    @ConfigEntry
+    public float trimLeftWidth = 0F;
     @ConfigEntry
     public float animationSpeed = 15F;
     @ConfigEntry
@@ -47,11 +73,54 @@ public class StaminaConfig {
     @ConfigEntry
     public float paddingAmount = 0.25F;
     @ConfigEntry
-    public float verticalOffset = 0.25F;
-    @ConfigEntry
     public int minStamina = 0;
     @ConfigEntry
     public float outlineThickness = 1;
+    @ConfigEntry
+    public boolean numberShadow = false;
+    @ConfigEntry
+    public boolean numberOutline = true;
+    @ConfigEntry
+    public Color numberBGColor = Color.BLACK;
+    @ConfigEntry
+    public Color strokeColor = Color.RED;
+    @ConfigEntry
+    public Color outerStrokeColor = Color.BLACK;
+    @ConfigEntry
+    public NumberPosition numberPosition = NumberPosition.BAR_CENTER;
+    @ConfigEntry
+    public float hungerBarWidth = 79F;
+    @ConfigEntry
+    public float hungerBarHeight = 5F;
+    @ConfigEntry
+    public float hungerBarVerticalOffset = 0F;
+    @ConfigEntry
+    public boolean fitToName = false;
+    @ConfigEntry
+    public boolean drawNametagTeam = true;
+    @ConfigEntry
+    public boolean overrideHomeColor = false;
+    @ConfigEntry
+    public Color homeTeamColorOverride = Color.WHITE;
+    @ConfigEntry
+    public Color secondaryHomeTeamColorOverride = Color.WHITE;
+    @ConfigEntry
+    public boolean overrideAwayColor = false;
+    @ConfigEntry
+    public Color awayTeamColorOverride = Color.BLACK;
+    @ConfigEntry
+    public Color secondaryAwayTeamColorOverride = Color.WHITE;
+    @ConfigEntry
+    public String innerText = "";
+    @ConfigEntry
+    public String outerText = "";
+    @ConfigEntry
+    public boolean mainColorGradientDirection = false;
+    @ConfigEntry
+    public boolean hungerBarGradientDirection = true;
+    @ConfigEntry
+    public boolean outlineIsTheBar = false;
+
 
 
     public static Screen getScreen(Screen parent) {
@@ -62,14 +131,19 @@ public class StaminaConfig {
                                 .option(Option.<Boolean>createBuilder()
                                         .name(Text.of("Render Bar"))
                                         .controller(TickBoxControllerBuilderImpl::new)
-                                        .binding(true, () -> config.customHungerBar, newVal -> config.customHungerBar = newVal)
+                                        .binding(true, () -> config.renderBar, newVal -> config.renderBar = newVal)
                                         .build())
                                 .group(OptionGroup.createBuilder()
                                         .name(Text.of("Transform"))
                                         .option(Option.<Float>createBuilder()
                                                 .name(Text.of("Width"))
-                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(5F, 75F).step(0.5F).valueFormatter(aFloat -> Text.of(String.format("%.1f", aFloat))))
-                                                .binding(10F, () -> config.width, color -> config.width = color)
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(30F, 125F).step(0.5F).valueFormatter(aFloat -> Text.of(String.format("%.1f", aFloat))))
+                                                .binding(75F, () -> config.width, color -> config.width = color)
+                                                .build())
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Fit To Name"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(false, () -> config.fitToName, newVal -> config.fitToName = newVal)
                                                 .build())
 //                                .option(Option.<Float>createBuilder()
 //                                        .name(Text.of("Trim Width From Left"))
@@ -79,13 +153,13 @@ public class StaminaConfig {
 //                                        .build())
                                         .option(Option.<Float>createBuilder()
                                                 .name(Text.of("Height"))
-                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 10F).step(0.5F).valueFormatter(aFloat -> Text.of(String.format("%.1f", aFloat))))
-                                                .binding(3F, () -> config.height, color -> config.height = color)
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(3F, 10F).step(0.5F).valueFormatter(aFloat -> Text.of(String.format("%.1f", aFloat))))
+                                                .binding(7.5F, () -> config.height, color -> config.height = color)
                                                 .build())
                                         .option(Option.<Float>createBuilder()
                                                 .name(Text.of("Vertical Offset"))
-                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(-10F, 10F).step(0.25F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
-                                                .binding(0F, () -> config.verticalOffset, color -> config.verticalOffset = color)
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(-15F, 15F).step(0.25F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
+                                                .binding(10F, () -> config.verticalOffset, color -> config.verticalOffset = color)
                                                 .build())
                                         .build())
                                 .group(OptionGroup.createBuilder()
@@ -97,38 +171,58 @@ public class StaminaConfig {
                                                 .binding(0, () -> config.minStamina, color -> config.minStamina = color)
                                                 .build())
                                         .option(Option.<Color>createBuilder()
-                                                .name(Text.of("Main (Full) Color"))
-                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
-                                                .binding(Color.WHITE, () -> config.mainColor, color -> config.mainColor = color)
-                                                .build())
-                                        .option(Option.<Color>createBuilder()
                                                 .name(Text.of("Background Color"))
                                                 .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
-                                                .binding(Color.BLACK, () -> config.outlineColor, color -> config.outlineColor = color)
+                                                .binding(new Color(0, 0, 0, 0.25F), () -> config.outlineColor, color -> config.outlineColor = color)
+                                                .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Secondary Background Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(new Color(0, 0, 0, 0.5F), () -> config.secondaryOutlineColor, color -> config.secondaryOutlineColor = color)
                                                 .build())
                                         .option(Option.<Color>createBuilder()
                                                 .name(Text.of("Empty Color"))
                                                 .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
                                                 .binding(Color.RED, () -> config.emptyMainColor, color -> config.emptyMainColor = color)
                                                 .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Outer Stroke Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.BLACK, () -> config.outerStrokeColor, color -> config.outerStrokeColor = color)
+                                                .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Stroke Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.RED, () -> config.strokeColor, color -> config.strokeColor = color)
+                                                .build())
                                         .option(Option.<Float>createBuilder()
                                                 .name(Text.of("Padding amount"))
-                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 1F).step(0.05F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 2F).step(0.05F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
                                                 .binding(0.25F, () -> config.paddingAmount, color -> config.paddingAmount = color)
                                                 .build())
                                         .option(Option.<Float>createBuilder()
                                                 .name(Text.of("Corner Rounding Amount"))
-                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 1F).step(0.05F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 1F).step(0.01F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
                                                 .binding(0.25F, () -> config.cornerRounding, color -> config.cornerRounding = color)
                                                 .build())
                                         .build())
                                 .build())
                         .category(ConfigCategory.createBuilder()
                                 .name(Text.of("Nametag"))
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.of("Render Team"))
+                                        .controller(TickBoxControllerBuilderImpl::new)
+                                        .binding(true, () -> config.drawNametagTeam, newVal -> config.drawNametagTeam = newVal)
+                                        .build())
                                 .option(Option.<Float>createBuilder()
                                         .name(Text.of("Nametag Outline Thickness"))
-                                        .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 5F).step(0.25F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
+                                        .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 1F).step(0.05F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
                                         .binding(0.5F, () -> config.outlineThickness, color -> config.outlineThickness = color)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.of("Outline IS The Bar"))
+                                        .controller(TickBoxControllerBuilderImpl::new)
+                                        .binding(true, () -> config.outlineIsTheBar, newVal -> config.outlineIsTheBar = newVal)
                                         .build())
                                 .build())
                         .category(ConfigCategory.createBuilder()
@@ -142,7 +236,8 @@ public class StaminaConfig {
                                         .name(Text.of("Number"))
                                         .option(Option.<Float>createBuilder()
                                                 .name(Text.of("Number Scale"))
-                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 1F).step(0.05F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
+                                                //TODO: fuck scaling. i'm capping it to 0.5
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0.5F, 1F).step(0.05F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
                                                 .binding(0.5F, () -> config.numberScale, color -> config.numberScale = color)
                                                 .build())
                                         .option(Option.<Color>createBuilder()
@@ -150,15 +245,182 @@ public class StaminaConfig {
                                                 .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
                                                 .binding(Color.GREEN, () -> config.numberColor, color -> config.numberColor = color)
                                                 .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Number Background Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.BLACK, () -> config.numberBGColor, color -> config.numberBGColor = color)
+                                                .build())
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Shadow"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(false, () -> config.numberShadow, newVal -> config.numberShadow = newVal)
+                                                .build())
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Outline"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(true, () -> config.numberOutline, newVal -> config.numberOutline = newVal)
+                                                .build())
+                                        .option(Option.<NumberPosition>createBuilder()
+                                                .name(Text.of("Position"))
+                                                .controller(numberPositionOption -> EnumControllerBuilder.create(numberPositionOption).enumClass(NumberPosition.class))
+                                                .binding(NumberPosition.BAR_CENTER, () -> config.numberPosition, newVal -> config.numberPosition = newVal)
+                                                .build())
+                                        .option(Option.<String>createBuilder()
+                                                .name(Text.of("Inner Text"))
+                                                .binding("", () -> config.innerText, newVal -> config.innerText = newVal)
+                                                .controller(StringControllerBuilderImpl::new)
+                                                .build())
+                                        .option(Option.<String>createBuilder()
+                                                .name(Text.of("Outer Text"))
+                                                .binding("", () -> config.outerText, newVal -> config.outerText = newVal)
+                                                .controller(StringControllerBuilderImpl::new)
+                                                .build())
                                         .build())
                                 .build())
                         .category(ConfigCategory.createBuilder()
-                                .name(Text.of("Miscellaneous"))
+                                .name(Text.of("HUD"))
                                 .option(Option.<Boolean>createBuilder()
                                         .name(Text.of("Custom Hunger Bar"))
                                         .description(OptionDescription.of(Text.of("Replace the normal hunger bar with the custom bar.")))
                                         .controller(TickBoxControllerBuilderImpl::new)
                                         .binding(false, () -> config.customHungerBar, newVal -> config.customHungerBar = newVal)
+                                        .build())
+                                .group(OptionGroup.createBuilder()
+                                        .name(Text.of("Transform"))
+                                        .option(Option.<Float>createBuilder()
+                                                .name(Text.of("Width"))
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(20F, 100F).step(0.5F).valueFormatter(aFloat -> Text.of(String.format("%.1f", aFloat))))
+                                                .binding(79F, () -> config.hungerBarWidth, color -> config.hungerBarWidth = color)
+                                                .build())
+                                        .option(Option.<Float>createBuilder()
+                                                .name(Text.of("Height"))
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0F, 10F).step(0.5F).valueFormatter(aFloat -> Text.of(String.format("%.1f", aFloat))))
+                                                .binding(5F, () -> config.hungerBarHeight, color -> config.hungerBarHeight = color)
+                                                .build())
+                                        .option(Option.<Float>createBuilder()
+                                                .name(Text.of("Vertical Offset"))
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(-10F, 10F).step(0.25F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
+                                                .binding(0F, () -> config.hungerBarVerticalOffset, color -> config.hungerBarVerticalOffset = color)
+                                                .build())
+                                        .build())
+                                .option(Option.<Color>createBuilder()
+                                        .name(Text.of("Color"))
+                                        .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                        .binding(Color.RED, () -> config.hungerBarMainColor, color -> config.hungerBarMainColor = color)
+                                        .build())
+                                .option(Option.<Color>createBuilder()
+                                        .name(Text.of("Secondary Color"))
+                                        .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                        .binding(Color.RED, () -> config.hungerBarSecondaryColor, color -> config.hungerBarSecondaryColor = color)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.of("Vertical Gradient"))
+                                        .controller(TickBoxControllerBuilderImpl::new)
+                                        .binding(false, () -> config.hungerBarGradientDirection, newVal -> config.hungerBarGradientDirection = newVal)
+                                        .build())
+                                .build())
+                        .category(ConfigCategory.createBuilder()
+                                .name(Text.of("Colors"))
+                                .group(OptionGroup.createBuilder()
+                                        .name(Text.of("Teams"))
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Override Home Color"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(false, () -> config.overrideHomeColor, newVal -> config.overrideHomeColor = newVal)
+                                                .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Custom Home Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.WHITE, () -> config.homeTeamColorOverride, color -> config.homeTeamColorOverride = color)
+                                                .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Secondary Custom Home Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.WHITE, () -> config.secondaryHomeTeamColorOverride, color -> config.secondaryHomeTeamColorOverride = color)
+                                                .build())
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Override Away Color"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(false, () -> config.overrideAwayColor, newVal -> config.overrideAwayColor = newVal)
+                                                .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Custom Away Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.WHITE, () -> config.awayTeamColorOverride, color -> config.awayTeamColorOverride = color)
+                                                .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Secondary Custom Away Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.WHITE, () -> config.secondaryAwayTeamColorOverride, color -> config.secondaryAwayTeamColorOverride = color)
+                                                .build())
+                                        .build())
+                                .group(OptionGroup.createBuilder()
+                                        .name(Text.of("Main Bar Color"))
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Main (Full) Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.WHITE, () -> config.mainColor, color -> config.mainColor = color)
+                                                .build())
+                                        .option(Option.<Color>createBuilder()
+                                                .name(Text.of("Secondary Main (Full) Color"))
+                                                .controller(colorOption -> ColorControllerBuilder.create(colorOption).allowAlpha(true))
+                                                .binding(Color.WHITE, () -> config.secondaryMainColor, color -> config.secondaryMainColor = color)
+                                                .build())
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Use Team For Main Color"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(false, () -> config.useTeamForMain, newVal -> config.useTeamForMain = newVal)
+                                                .build())
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Vertical Gradient"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(false, () -> config.mainColorGradientDirection, newVal -> config.mainColorGradientDirection = newVal)
+                                                .build())
+                                        .option(Option.<Boolean>createBuilder()
+                                                .name(Text.of("Evil Mode"))
+                                                .controller(TickBoxControllerBuilderImpl::new)
+                                                .binding(false, () -> config.evilMainColor, newVal -> config.evilMainColor = newVal)
+                                                .build())
+                                        .build())
+                                .build())
+                        .category(ConfigCategory.createBuilder()
+                                .name(Text.of("Misc."))
+                                .group(OptionGroup.createBuilder()
+                                        .name(Text.of("Config"))
+                                        .option(ButtonOption.createBuilder()
+                                                .name(Text.of("Copy Current Config"))
+                                                .description(OptionDescription.of(Text.of("Copies the current configuration as text to your clipboard. Go share your configs with your buddies! (Make sure to save the config first.)")))
+                                                .action((yaclScreen, buttonOption) -> {
+                                                    MinecraftClient.getInstance().keyboard.setClipboard(StaminaDisplay.gson.toJson(INSTANCE.getConfig()));
+                                                    System.out.printf("Copied!");
+                                                })
+                                                .text(Text.of("Copy"))
+                                                .build())
+                                        .option(ButtonOption.createBuilder()
+                                                .name(Text.literal("Load Config From Clipboard").formatted(Formatting.DARK_RED, Formatting.BOLD))
+                                                .description(OptionDescription.of(Text.of("Loads a configuration from your clipboard if it's valid. WARNING: LOADING A VALID CONFIGURATION WILL OVERWRITE YOUR CONFIGURATION FILE. The screen will close itself, reopen it to see your new values.")))
+                                                .text(Text.of("Load"))
+                                                .action((yaclScreen, buttonOption) -> {
+                                                    //this sucks but it works!!
+                                                    try {
+                                                        StaminaDisplay.gson.fromJson(MinecraftClient.getInstance().keyboard.getClipboard(), StaminaConfig.class);
+                                                    } catch (JsonSyntaxException e) {
+                                                        System.out.println("invalid config!!!");
+                                                        return;
+                                                    }
+                                                    try {
+                                                        Path path = FabricLoader.getInstance().getConfigDir().resolve("staminadisplay.json");
+                                                        Files.delete(path);
+                                                        Files.createFile(path);
+                                                        Files.writeString(path, MinecraftClient.getInstance().keyboard.getClipboard(), StandardCharsets.UTF_8);
+                                                        StaminaConfig.INSTANCE.load();
+                                                        MinecraftClient.getInstance().setScreen(parent);
+                                                        System.out.println("Loaded!");
+                                                    } catch (IOException e) {
+                                                        throw new RuntimeException(e);
+                                                    }
+                                                })
+                                                .build())
                                         .build())
                                 .option(Option.<Float>createBuilder()
                                         .name(Text.of("Animation Speed"))

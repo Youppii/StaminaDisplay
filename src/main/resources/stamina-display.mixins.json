@@ -9,7 +9,11 @@
   },
   "client": [
     "BossBarAccessor",
+    "EntityRenderDispatcherMixin",
+    "EntityRendererInvoker",
     "EntityRenderMixin",
-    "InGameHudMixin"
+    "InGameHudMixin",
+    "LightmapTextureManagerAccessor",
+    "YaclScreenMixin"
   ]
 }

@@ -1,37 +1,53 @@
 package me.noobilybridge;
 
+import com.google.gson.FieldNamingPolicy;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.mojang.blaze3d.systems.RenderSystem;
+import dev.isxander.yacl3.config.GsonConfigInstance;
 import me.noobilybridge.config.StaminaConfig;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gl.SimpleFramebuffer;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.render.*;
-import net.minecraft.client.render.entity.EntityRenderDispatcher;
+import net.minecraft.client.render.block.entity.EndPortalBlockEntityRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.util.Pair;
 import net.minecraft.util.math.ColorHelper;
 import net.minecraft.util.math.MathHelper;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Unique;
 
 import java.awt.*;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 @SuppressWarnings("ALL")
 public class StaminaDisplay implements ClientModInitializer {
-    public static Map<AbstractClientPlayerEntity, Float> staminaValues = new HashMap<>();
+    //Left - Stamina
+    //Right - Animation progress
+    public static Map<AbstractClientPlayerEntity, Pair<Float, Float>> staminaValues = new HashMap<>();
+    public static Map<AbstractClientPlayerEntity, Pair<Integer, Color>> teams = new HashMap<>();
+
     public static float clientStamina = 0F;
+    public static KeyBinding toggleNametags;
+    public static float clientAnimationProgress = 0F;
+    public static Gson gson = new GsonBuilder()
+            .registerTypeHierarchyAdapter(Text.class, new Text.Serializer())
+            .registerTypeHierarchyAdapter(Style.class, new Style.Serializer())
+            .registerTypeHierarchyAdapter(Color.class, new GsonConfigInstance.ColorTypeAdapter())
+            .serializeNulls()
+            .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+            .setPrettyPrinting()
+            .create();
 
     @Override
     public void onInitializeClient() {
@@ -40,29 +56,47 @@ public class StaminaDisplay implements ClientModInitializer {
             BlockRenderLayerMap.INSTANCE.putBlocks(RenderLayer.getSolid(), Blocks.ICE, Blocks.PACKED_ICE, Blocks.FROSTED_ICE, Blocks.BLUE_ICE);
         }
         WorldRenderEvents.START.register(worldRenderContext -> {
-            clientStamina = (float) ease(clientStamina, MinecraftClient.getInstance().player.getHungerManager().getFoodLevel(), StaminaConfig.INSTANCE.getConfig().animationSpeed);
+            //TODO
+//            if (MinecraftClient.getInstance().player.getHungerManager().getFoodLevel() == 0) {
+//                clientStamina = 0F;
+//            } else {
+//                clientStamina = (float) ease(clientStamina, MinecraftClient.getInstance().player.getHungerManager().getFoodLevel(), StaminaConfig.INSTANCE.getConfig().animationSpeed);
+//            }
+            clientStamina = (float) ease(clientStamina, getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(MinecraftClient.getInstance().player.getUuid())), StaminaConfig.INSTANCE.getConfig().animationSpeed);
+            clientAnimationProgress = (float) StaminaDisplay.ease(clientAnimationProgress, getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(MinecraftClient.getInstance().player.getUuid())) == 0 ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed);
         });
+//        toggleNametags = KeyBindingHelper.registerKeyBinding(new KeyBinding("yeah", InputUtil.Type.KEYSYM, GLFW.));
     }
 
     public static float getStamina(Entity e) {
-        if(e.equals(MinecraftClient.getInstance().player)) {
+        if (e.equals(MinecraftClient.getInstance().player)) {
             return clientStamina;
         }
-        return MathHelper.clamp(StaminaDisplay.staminaValues.get(e) - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20);
+        if (!staminaValues.containsKey(e)) {
+            return -1;
+        }
+        return MathHelper.clamp(StaminaDisplay.staminaValues.get(e).getLeft() - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20);
     }
 
     public static float getScaledStamina(Entity e) {
-        if(e.equals(MinecraftClient.getInstance().player)) {
+        if (e.equals(MinecraftClient.getInstance().player)) {
             return MathHelper.clamp(clientStamina - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20) / getMaxStamina();
         }
-            return MathHelper.clamp(StaminaDisplay.staminaValues.get(e) - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20) / getMaxStamina();
+        return MathHelper.clamp(StaminaDisplay.staminaValues.get(e).getLeft() - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20) / getMaxStamina();
+    }
+
+    public static float getAnimationProgress(Entity entity) {
+        if (entity.equals(MinecraftClient.getInstance().player)) {
+            return clientAnimationProgress;
+        }
+        return staminaValues.get(entity).getRight();
     }
 
     public static void updateStaminaForEntity(Entity entity) {
         int staminaVal = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
-        StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, (float) staminaVal);
-        float lastStamina = StaminaDisplay.staminaValues.get(entity);
-        StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, (float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed));
+        StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, new Pair<>((float) staminaVal, 0F));
+        float lastStamina = StaminaDisplay.staminaValues.get(entity).getLeft();
+        StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, new Pair<>((float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed), (float) StaminaDisplay.ease(staminaValues.get(entity).getRight(), staminaVal == 0 ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed)));
     }
 
     public static float getMaxStamina() {
@@ -70,9 +104,6 @@ public class StaminaDisplay implements ClientModInitializer {
     }
 
     public static int getColor(Color col) {
-//        if (col.getAlpha() == 0 && col.equals(Color.BLACK)) {
-//            return ColorHelper.Argb.getArgb(team.getAlpha(), team.getRed(), team.getGreen(), team.getBlue());
-//        }
         return ColorHelper.Argb.getArgb(col.getAlpha(), col.getRed(), col.getGreen(), col.getBlue());
     }
 
@@ -105,20 +136,12 @@ public class StaminaDisplay implements ClientModInitializer {
         return new Color(MathHelper.clamp(MathHelper.lerp(percent, c1.getRed(), c2.getRed()), 0, 255), MathHelper.clamp(MathHelper.lerp(percent, c1.getGreen(), c2.getGreen()), 0, 255), MathHelper.clamp(MathHelper.lerp(percent, c1.getBlue(), c2.getBlue()), 0, 255));
     }
 
-    public static void renderRoundedQuad(MatrixStack matrices, Color c, double fromX, double fromY, double toX, double toY, double radC1, double radC2, double radC3, double radC4, double samples) {
-        int color = c.getRGB();
-        Matrix4f matrix = matrices.peek().getPositionMatrix();
-        float f = (float) (color >> 24 & 255) / 255.0F;
-        float g = (float) (color >> 16 & 255) / 255.0F;
-        float h = (float) (color >> 8 & 255) / 255.0F;
-        float k = (float) (color & 255) / 255.0F;
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-
-        renderRoundedQuadInternal(matrix, g, h, k, f, fromX, fromY, toX, toY, radC1, radC2, radC3, radC4, samples);
-    }
 
     @Unique
-    public static void fillFloat(MatrixStack matrices, float x1, float y1, float x2, float y2, float z, int color) {
+    public static void fillFloat(MatrixStack matrices, float x1, float y1, float x2, float y2, int color) {
+        BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
+        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        bufferBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
         Matrix4f matrix4f = matrices.peek().getPositionMatrix();
         if (x1 < x2) {
             float i = x1;
@@ -136,43 +159,235 @@ public class StaminaDisplay implements ClientModInitializer {
         float g = (float) ColorHelper.Argb.getRed(color) / 255.0F;
         float h = (float) ColorHelper.Argb.getGreen(color) / 255.0F;
         float j = (float) ColorHelper.Argb.getBlue(color) / 255.0F;
-        BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
-        RenderSystem.enableBlend();
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        bufferBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        bufferBuilder.vertex(matrix4f, (float) x1, (float) y1, (float) z).color(g, h, j, f).next();
-        bufferBuilder.vertex(matrix4f, (float) x1, (float) y2, (float) z).color(g, h, j, f).next();
-        bufferBuilder.vertex(matrix4f, (float) x2, (float) y2, (float) z).color(g, h, j, f).next();
-        bufferBuilder.vertex(matrix4f, (float) x2, (float) y1, (float) z).color(g, h, j, f).next();
+        bufferBuilder.vertex(matrix4f, (float) x1, (float) y1, (float) 0).color(g, h, j, f).next();
+        bufferBuilder.vertex(matrix4f, (float) x1, (float) y2, (float) 0).color(g, h, j, f).next();
+        bufferBuilder.vertex(matrix4f, (float) x2, (float) y2, (float) 0).color(g, h, j, f).next();
+        bufferBuilder.vertex(matrix4f, (float) x2, (float) y1, (float) 0).color(g, h, j, f).next();
         BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
-        RenderSystem.disableBlend();
     }
 
-    public static void renderRoundedQuadInternal(Matrix4f matrix, float cr, float cg, float cb, float ca, double fromX, double fromY, double toX, double toY, double radC1, double radC2, double radC3, double radC4, double samples) {
+    public static void renderRoundedQuadInternal(Matrix4f matrix, double fromX, double fromY, double toX, double toY, double samples, int light, boolean outline, int startCol, int endCol, boolean verticalGradient, float thickness, boolean evilmode) {
+        RenderSystem.setShader(GameRenderer::getPositionColorLightmapProgram);
         BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
-        bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
+        float startA = ((startCol >> 24) & 0xFF) / 255f;
+        float startR = ((startCol >> 16) & 0xFF) / 255f;
+        float startG = ((startCol >> 8) & 0xFF) / 255f;
+        float startB = (startCol & 0xFF) / 255f;
 
-        double[][] map = new double[][]{new double[]{toX - radC4, toY - radC4, radC4}, new double[]{toX - radC2, fromY + radC2, radC2}, new double[]{fromX + radC1, fromY + radC1, radC1}, new double[]{fromX + radC3, toY - radC3, radC3}};
+        float endA = ((endCol >> 24) & 0xFF) / 255f;
+        float endR = ((endCol >> 16) & 0xFF) / 255f;
+        float endG = ((endCol >> 8) & 0xFF) / 255f;
+        float endB = (endCol & 0xFF) / 255f;
+        double radius = MathHelper.lerp(StaminaConfig.INSTANCE.getConfig().cornerRounding, 0, Math.min(Math.abs(toY - fromY), Math.abs(toX - fromX)) / 2);
+        if (outline) {
+            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR_LIGHT);
 
-        for (int i = 0; i < 4; i++) {
-            double[] current = map[i];
-            double rad = current[2];
-            for (double r = i * 90d; r < 360 / 4d + i * 90d; r += 90 / samples) {
-                float rad1 = (float) Math.toRadians(r);
+            double[][] map = new double[][]{
+                    new double[]{toX - radius, toY - radius, radius},
+                    new double[]{toX - radius, fromY + radius, radius},
+                    new double[]{fromX + radius, fromY + radius, radius},
+                    new double[]{fromX + radius, toY - radius, radius}
+            };
+
+            for (int i = 0; i < 4; i++) {
+                double[] current = map[i];
+                double rad = current[2];
+                double innerRad = Math.max(0, rad - thickness);
+
+                for (double r = i * 90d; r <= 360 / 4d + i * 90d; r += 90 / samples) {
+                    float rad1 = (float) Math.toRadians(r);
+                    float sin = (float) Math.sin(rad1);
+                    float cos = (float) Math.cos(rad1);
+
+                    // Outer vertex
+                    float x = (float) current[0] + sin * (float) innerRad;
+                    float y = (float) current[1] + cos * (float) innerRad;
+                    float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                    bufferBuilder.vertex(matrix, x, y, 0)
+                            .color(color[0], color[1], color[2], color[3]).light(light).next();
+
+
+                    x = (float) current[0] + sin * (float) rad;
+                    y = (float) current[1] + cos * (float) rad;
+                    color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                    bufferBuilder.vertex(matrix, x, y, 0)
+                            .color(color[0], color[1], color[2], color[3]).light(light).next();
+                }
+            }
+            float rad1 = (float) Math.toRadians(0);
+            double rad = map[0][2];
+            double innerRad = Math.max(0, rad - thickness);
+            float[] color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+            bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, 0)
+                    .color(color[0], color[1], color[2], color[3]).light(light).next();
+            color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+            bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, 0)
+                    .color(color[0], color[1], color[2], color[3]).light(light).next();
+        } else {
+            if(evilmode){
+                RenderSystem.setShader(GameRenderer::getRenderTypeEndGatewayProgram);
+                RenderSystem.setShaderTexture(0,EndPortalBlockEntityRenderer.SKY_TEXTURE);
+                RenderSystem.setShaderTexture(1,EndPortalBlockEntityRenderer.PORTAL_TEXTURE);
+            }
+            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR_LIGHT);
+            double[][] map = new double[][]{
+                    new double[]{toX - radius, toY - radius, radius},
+                    new double[]{toX - radius, fromY + radius, radius},
+                    new double[]{fromX + radius, fromY + radius, radius},
+                    new double[]{fromX + radius, toY - radius, radius}
+            };
+            for (int i = 0; i < 4; i++) {
+                double[] current = map[i];
+                double rad = current[2];
+                for (double r = i * 90d; r < 360 / 4d + i * 90d; r += 90 / samples) {
+                    float rad1 = (float) Math.toRadians(r);
+                    float sin = (float) (Math.sin(rad1) * rad);
+                    float cos = (float) (Math.cos(rad1) * rad);
+                    float x = (float) current[0] + sin;
+                    float y = (float) current[1] + cos;
+
+                    float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                    bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
+                }
+                float rad1 = (float) Math.toRadians(360 / 4d + i * 90d);
                 float sin = (float) (Math.sin(rad1) * rad);
                 float cos = (float) (Math.cos(rad1) * rad);
-                bufferBuilder.vertex(matrix, (float) current[0] + sin, (float) current[1] + cos, 0.0F).color(cr, cg, cb, ca).next();
+                float x = (float) current[0] + sin;
+                float y = (float) current[1] + cos;
+
+                float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
             }
-            float rad1 = (float) Math.toRadians(360 / 4d + i * 90d);
-            float sin = (float) (Math.sin(rad1) * rad);
-            float cos = (float) (Math.cos(rad1) * rad);
-            bufferBuilder.vertex(matrix, (float) current[0] + sin, (float) current[1] + cos, 0.0F).color(cr, cg, cb, ca).next();
         }
         BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
     }
 
-    @Unique
-    public static void renderRoundedQuad(MatrixStack stack, Color c, double x, double y, double x1, double y1, double rad, double samples) {
-        renderRoundedQuad(stack, c, x, y, x1, y1, rad, rad, rad, rad, samples);
+    public static void renderRoundedQuad(Matrix4f matrix, double fromX, double fromY, double toX, double toY, double samples, int light, boolean outline, int startCol, int endCol, boolean verticalGradient, float thickness, boolean evilmode) {
+        float startA = ((startCol >> 24) & 0xFF) / 255f;
+        float startR = ((startCol >> 16) & 0xFF) / 255f;
+        float startG = ((startCol >> 8) & 0xFF) / 255f;
+        float startB = (startCol & 0xFF) / 255f;
+
+        float endA = ((endCol >> 24) & 0xFF) / 255f;
+        float endR = ((endCol >> 16) & 0xFF) / 255f;
+        float endG = ((endCol >> 8) & 0xFF) / 255f;
+        float endB = (endCol & 0xFF) / 255f;
+
+        if(startA == 0 && endA == 0){
+            return;
+        }
+
+        RenderSystem.setShader(GameRenderer::getPositionColorLightmapProgram);
+        BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
+        double radius = MathHelper.lerp(StaminaConfig.INSTANCE.getConfig().cornerRounding, 0, Math.min(Math.abs(toY - fromY), Math.abs(toX - fromX)) / 2);
+        if (outline) {
+            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR_LIGHT);
+
+            double[][] map = new double[][]{
+                    new double[]{toX - radius, toY - radius, radius},
+                    new double[]{toX - radius, fromY + radius, radius},
+                    new double[]{fromX + radius, fromY + radius, radius},
+                    new double[]{fromX + radius, toY - radius, radius}
+            };
+
+            for (int i = 0; i < 4; i++) {
+                double[] current = map[i];
+                double rad = current[2];
+                double innerRad = Math.max(0, rad - thickness);
+
+                for (double r = i * 90d; r <= 360 / 4d + i * 90d; r += 90 / samples) {
+                    float rad1 = (float) Math.toRadians(r);
+                    float sin = (float) Math.sin(rad1);
+                    float cos = (float) Math.cos(rad1);
+
+                    // Outer vertex
+                    float x = (float) current[0] + sin * (float) innerRad;
+                    float y = (float) current[1] + cos * (float) innerRad;
+                    float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                    bufferBuilder.vertex(matrix, x, y, 0)
+                            .color(color[0], color[1], color[2], color[3]).light(light).next();
+
+
+                    x = (float) current[0] + sin * (float) rad;
+                    y = (float) current[1] + cos * (float) rad;
+                    color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                    bufferBuilder.vertex(matrix, x, y, 0)
+                            .color(color[0], color[1], color[2], color[3]).light(light).next();
+
+                    // Inner vertex
+                }
+            }
+
+            // Close the loop by connecting back to the first vertices
+            float rad1 = (float) Math.toRadians(0);
+            double rad = map[0][2];
+            double innerRad = Math.max(0, rad - thickness);
+            float[] color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+            bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, 0)
+                    .color(color[0], color[1], color[2], color[3]).light(light).next();
+            color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+            bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, 0)
+                    .color(color[0], color[1], color[2], color[3]).light(light).next();
+        } else {
+            // Draw filled quad using TRIANGLE_FAN
+            if(evilmode){
+                RenderSystem.setShader(GameRenderer::getRenderTypeEndGatewayProgram);
+                RenderSystem.setShaderTexture(0,EndPortalBlockEntityRenderer.SKY_TEXTURE);
+                RenderSystem.setShaderTexture(1,EndPortalBlockEntityRenderer.PORTAL_TEXTURE);
+            }
+            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR_LIGHT);
+            double[][] map = new double[][]{
+                    new double[]{toX - radius, toY - radius, radius},
+                    new double[]{toX - radius, fromY + radius, radius},
+                    new double[]{fromX + radius, fromY + radius, radius},
+                    new double[]{fromX + radius, toY - radius, radius}
+            };
+
+            for (int i = 0; i < 4; i++) {
+                double[] current = map[i];
+                double rad = current[2];
+                for (double r = i * 90d; r < 360 / 4d + i * 90d; r += 90 / samples) {
+                    float rad1 = (float) Math.toRadians(r);
+                    float sin = (float) (Math.sin(rad1) * rad);
+                    float cos = (float) (Math.cos(rad1) * rad);
+                    float x = (float) current[0] + sin;
+                    float y = (float) current[1] + cos;
+
+                    float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                    bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
+                }
+                float rad1 = (float) Math.toRadians(360 / 4d + i * 90d);
+                float sin = (float) (Math.sin(rad1) * rad);
+                float cos = (float) (Math.cos(rad1) * rad);
+                float x = (float) current[0] + sin;
+                float y = (float) current[1] + cos;
+
+                float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
+                bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
+            }
+        }
+        BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
     }
+
+    private static float[] getGradientColor(float x, float y, double fromX, double fromY, double toX, double toY,
+                                            float startR, float startG, float startB,
+                                            float endR, float endG, float endB, float startA, float endA,
+                                            boolean vertical) {
+
+        float t;
+        if (vertical) {
+            t = (float) ((y - fromY) / (toY - fromY));
+        } else {
+            t = (float) ((x - fromX) / (toX - fromX));
+        }
+        t = MathHelper.clamp(t, 0, 1);
+        //TODO: 4 way gradients!!!
+        float r = startR + (endR - startR) * t;
+        float g = startG + (endG - startG) * t;
+        float b = startB + (endB - startB) * t;
+        float a = startA + (endA - startA) * t;
+
+        return new float[]{r, g, b, a};
+    }
+
 }
