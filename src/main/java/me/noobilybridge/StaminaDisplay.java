@@ -9,6 +9,8 @@ import me.noobilybridge.config.StaminaConfig;
 import me.noobilybridge.mixin.BossBarAccessor;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -58,6 +60,7 @@ public class StaminaDisplay implements ClientModInitializer {
     public static KeyBinding toggleMod;
     public static KeyBinding toggleBars;
     public static float clientAnimationProgress = 0F;
+    public static boolean openConfig = false;
     public static Gson gson = new GsonBuilder()
             .registerTypeHierarchyAdapter(Text.class, new Text.Serializer())
             .registerTypeHierarchyAdapter(Style.class, new Style.Serializer())
@@ -75,9 +78,15 @@ public class StaminaDisplay implements ClientModInitializer {
         if (StaminaConfig.INSTANCE.getConfig().iceTranslucencyDisable) {
             BlockRenderLayerMap.INSTANCE.putBlocks(RenderLayer.getSolid(), Blocks.ICE, Blocks.PACKED_ICE, Blocks.FROSTED_ICE, Blocks.BLUE_ICE);
         }
-//        ClientPlayConnectionEvents.JOIN.register((clientPlayNetworkHandler, packetSender, minecraftClient) -> {
-//            modAllowed = Permissions.check(minecraftClient.player, "blockey.mods.stamdisplay.v1");
-//        });
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, dedicated) -> {
+            dispatcher.register(
+                    ClientCommandManager.literal("staminadisplay").executes(c -> {
+                        openConfig = true;
+                        return 1;
+                    })
+            );
+        });
+
         WorldRenderEvents.START.register(worldRenderContext -> {
 
             for (BossBar clientBossBar : ((BossBarAccessor) MinecraftClient.getInstance().inGameHud.getBossBarHud()).getBossBars().values()) {
@@ -95,6 +104,10 @@ public class StaminaDisplay implements ClientModInitializer {
             clientAnimationProgress = (float) StaminaDisplay.ease(clientAnimationProgress, yeah || !modEnabled || !gameActive ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed);
         });
         ClientTickEvents.END_CLIENT_TICK.register((client) -> {
+            if (openConfig) {
+                client.setScreen(StaminaConfig.getScreen(client.currentScreen));
+                openConfig = false;
+            }
             while (toggleMod.wasPressed()) {
                 modEnabled = !modEnabled;
             }
@@ -118,33 +131,32 @@ public class StaminaDisplay implements ClientModInitializer {
         1 - away
         -1 - neither
          */
-        if(info == null){
+        if (info == null) {
             return -1;
         }
         Text displayName = info.getDisplayName();
         try {
-        if (displayName != null) {
-            switch (displayName.getSiblings().get(2).getStyle().getColor().getName()) {
-                case "yellow" -> {
-                    return 1;
-                }
-                case "blue" -> {
-                    return 0;
-                }
-                //TODO:
-                case "gold" -> {
-                    return -1;
-                }
-                case "red" -> {
-                    return -1;
-                }
-                case "white" -> {
-                    return -1;
+            if (displayName != null) {
+                switch (displayName.getSiblings().get(2).getStyle().getColor().getName()) {
+                    case "yellow" -> {
+                        return 1;
+                    }
+                    case "blue" -> {
+                        return 0;
+                    }
+                    //TODO:
+                    case "gold" -> {
+                        return -1;
+                    }
+                    case "red" -> {
+                        return -1;
+                    }
+                    case "white" -> {
+                        return -1;
+                    }
                 }
             }
-        }
-        }
-        catch (Exception ignored) {
+        } catch (Exception ignored) {
             return -1;
         }
         return -1;

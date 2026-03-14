@@ -57,11 +57,19 @@ public abstract class InGameHudMixin {
             renderRoundedQuad(matrices.peek().getPositionMatrix(), (-width / 2F) - p, -height / 2F - p, (width / 2F) + p, height / 2F + p, 10, false, getColor(outlineColor), getColor(outlineColor), false, 0, false);
                 matrices.translate(0, 0, 0.1F);
                 float scaledStamina = getScaledStamina(client.player);
+                if(MinecraftClient.getInstance().player.hasVehicle()){
+                    scaledStamina = MathHelper.clamp(getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(MinecraftClient.getInstance().player.getUuid())) - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20) / getMaxStamina();
+                }
                 renderRoundedQuad(matrices.peek().getPositionMatrix(), -width / 2, -height / 2F, MathHelper.lerp(scaledStamina, -width / 2, width / 2), height / 2F, 10, false, getColor(StaminaConfig.INSTANCE.getConfig().hungerBarMainColor), getColor(StaminaConfig.INSTANCE.getConfig().hungerBarSecondaryColor), StaminaConfig.INSTANCE.getConfig().hungerBarGradientDirection, 0, false);
             if (StaminaConfig.INSTANCE.getConfig().showNumberInBar) {
                 matrices.translate(0, 0, 0.1F);
-                matrices.scale(StaminaConfig.INSTANCE.getConfig().numberScale, StaminaConfig.INSTANCE.getConfig().numberScale, 1);
-                DrawableHelper.drawCenteredTextWithShadow(matrices, MinecraftClient.getInstance().textRenderer, String.valueOf(Math.round(clientStamina)), 0, -getTextRenderer().fontHeight / 2, getColor(StaminaConfig.INSTANCE.getConfig().barNumberColor));
+                matrices.scale(StaminaConfig.INSTANCE.getConfig().barNumberScale, StaminaConfig.INSTANCE.getConfig().barNumberScale, 1);
+                String text = String.valueOf(Math.round(clientStamina));
+                //TODO: yet another shitty workaround
+                if(MinecraftClient.getInstance().player.hasVehicle()){
+                    text = String.valueOf(StaminaDisplay.getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(MinecraftClient.getInstance().player.getUuid())));
+                }
+                DrawableHelper.drawCenteredTextWithShadow(matrices, MinecraftClient.getInstance().textRenderer, text, 0, -getTextRenderer().fontHeight / 2, getColor(StaminaConfig.INSTANCE.getConfig().barNumberColor));
                 RenderSystem.setShaderTexture(0, GUI_ICONS_TEXTURE);
             }
             matrices.pop();

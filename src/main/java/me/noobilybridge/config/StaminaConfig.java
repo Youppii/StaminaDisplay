@@ -148,6 +148,8 @@ public class StaminaConfig {
     public boolean showNumberInBar = true;
     @ConfigEntry
     public Color barNumberColor = Color.WHITE;
+    @ConfigEntry
+    public float barNumberScale = 0.5F;
 
 
     public static Screen getScreen(Screen parent) {
@@ -484,6 +486,11 @@ public class StaminaConfig {
                                                 .name(Text.of("Show Number"))
                                                 .controller(TickBoxControllerBuilderImpl::new)
                                                 .binding(true, () -> config.showNumberInBar, newVal -> config.showNumberInBar = newVal)
+                                                .build())
+                                        .option(Option.<Float>createBuilder()
+                                                .name(Text.of("Number Scale"))
+                                                .controller(floatOption -> FloatSliderControllerBuilder.create(floatOption).range(0.25F, 1F).step(0.05F).valueFormatter(aFloat -> Text.of(String.format("%.2f", aFloat))))
+                                                .binding(0.5F, () -> config.barNumberScale, color -> config.barNumberScale = color)
                                                 .build())
                                         .build())
                                 .build())

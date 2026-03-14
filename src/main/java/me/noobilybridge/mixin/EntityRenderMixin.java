@@ -93,6 +93,9 @@ public abstract class EntityRenderMixin<T extends Entity> {
         textRenderer.draw(
                 name, animatedWidth, (float) i, convertToShadow(yeahhh, 1, 0.125F), false, matrix4f, vertexConsumers, bl ? TextRenderer.TextLayerType.SEE_THROUGH : TextRenderer.TextLayerType.NORMAL, 0, light
         );
+        if(StaminaConfig.INSTANCE.getConfig().numberPosition == NumberPosition.AFTER_NAME && StaminaConfig.INSTANCE.getConfig().showNumber) {
+            renderNumber(entity, ms, vertexConsumers, bl, text, yeah, yeahhh);
+        }
         if (bl) {
             ms.push();
             if (StaminaConfig.INSTANCE.getConfig().nametagShadow) {
@@ -111,7 +114,7 @@ public abstract class EntityRenderMixin<T extends Entity> {
         }
         ms.translate(0, 0, 0.25F);
 
-        if (StaminaConfig.INSTANCE.getConfig().showNumber) {
+        if (StaminaConfig.INSTANCE.getConfig().showNumber && StaminaConfig.INSTANCE.getConfig().numberPosition != NumberPosition.AFTER_NAME) {
             renderNumber(entity, ms, vertexConsumers, bl, text, yeah, yeahhh);
         }
         postRender(ms);
@@ -152,14 +155,14 @@ public abstract class EntityRenderMixin<T extends Entity> {
         if (StaminaConfig.INSTANCE.getConfig().cornerRounding == 0) {
             drawBorderSpecial(ms, -width / 2 - (p * 1.5F), -StaminaConfig.INSTANCE.getConfig().height / 2F - (p) - p / 2, (width) + p * 3 + 1, StaminaConfig.INSTANCE.getConfig().height + (p * 3), getColor(StaminaConfig.INSTANCE.getConfig().outerStrokeColor, eviler), p / 2);
         } else {
-            renderRoundedQuad(ms.peek().getPositionMatrix(), (-width / 2F) - p * 2, -StaminaConfig.INSTANCE.getConfig().height / 2F - p * 2, (width / 2F) + p * 2 + 1, StaminaConfig.INSTANCE.getConfig().height / 2F + p * 2, 10,  true, getColor(StaminaConfig.INSTANCE.getConfig().outerStrokeColor, eviler), getColor(StaminaConfig.INSTANCE.getConfig().outerStrokeColor, eviler), true, p / 2, false);
+            renderRoundedQuad(ms.peek().getPositionMatrix(), (-width / 2F) - p * 2, -StaminaConfig.INSTANCE.getConfig().height / 2F - p * 2, (width / 2F) + p * 2 + 1, StaminaConfig.INSTANCE.getConfig().height / 2F + p * 2, 10, true, getColor(StaminaConfig.INSTANCE.getConfig().outerStrokeColor, eviler), getColor(StaminaConfig.INSTANCE.getConfig().outerStrokeColor, eviler), true, p / 2, false);
         }
 
         ms.translate(0, 0, StaminaConfig.INSTANCE.getConfig().zAxisOffset);
         if (StaminaConfig.INSTANCE.getConfig().useTeamForMain) {
             renderRoundedQuad(ms.peek().getPositionMatrix(), -width / 2, -StaminaConfig.INSTANCE.getConfig().height / 2F, MathHelper.lerp(getScaledStamina(entity), -width / 2, width / 2 + 1), StaminaConfig.INSTANCE.getConfig().height / 2F, 10, false, getColor(getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, getColorFromTeam(teams.get(entity), false), StaminaConfig.INSTANCE.getConfig().useEmptyColor ? getScaledStamina(entity) : 1), eviler), getColor(getLerpedColor(StaminaConfig.INSTANCE.getConfig().secondaryEmptyMainColor, getColorFromTeam(teams.get(entity), true), StaminaConfig.INSTANCE.getConfig().useEmptyColor ? getScaledStamina(entity) : 1), eviler), StaminaConfig.INSTANCE.getConfig().mainColorGradientDirection, 0, StaminaConfig.INSTANCE.getConfig().evilMainColor);
         } else {
-            renderRoundedQuad(ms.peek().getPositionMatrix(), -width / 2, -StaminaConfig.INSTANCE.getConfig().height / 2F, MathHelper.lerp(getScaledStamina(entity), -width / 2, width / 2 + 1), StaminaConfig.INSTANCE.getConfig().height / 2F, 10,  false, getColor(getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, StaminaConfig.INSTANCE.getConfig().mainColor, StaminaConfig.INSTANCE.getConfig().useEmptyColor ? getScaledStamina(entity) : 1), eviler), getColor(getLerpedColor(StaminaConfig.INSTANCE.getConfig().secondaryEmptyMainColor, StaminaConfig.INSTANCE.getConfig().secondaryMainColor, StaminaConfig.INSTANCE.getConfig().useEmptyColor ? getScaledStamina(entity) : 1), eviler), StaminaConfig.INSTANCE.getConfig().mainColorGradientDirection, 0, StaminaConfig.INSTANCE.getConfig().evilMainColor);
+            renderRoundedQuad(ms.peek().getPositionMatrix(), -width / 2, -StaminaConfig.INSTANCE.getConfig().height / 2F, MathHelper.lerp(getScaledStamina(entity), -width / 2, width / 2 + 1), StaminaConfig.INSTANCE.getConfig().height / 2F, 10, false, getColor(getLerpedColor(StaminaConfig.INSTANCE.getConfig().emptyMainColor, StaminaConfig.INSTANCE.getConfig().mainColor, StaminaConfig.INSTANCE.getConfig().useEmptyColor ? getScaledStamina(entity) : 1), eviler), getColor(getLerpedColor(StaminaConfig.INSTANCE.getConfig().secondaryEmptyMainColor, StaminaConfig.INSTANCE.getConfig().secondaryMainColor, StaminaConfig.INSTANCE.getConfig().useEmptyColor ? getScaledStamina(entity) : 1), eviler), StaminaConfig.INSTANCE.getConfig().mainColorGradientDirection, 0, StaminaConfig.INSTANCE.getConfig().evilMainColor);
         }
         //TODO: shitty workaround, but good enough for now
         ms.translate(0, 0, StaminaConfig.INSTANCE.getConfig().zAxisOffset);
@@ -197,11 +200,11 @@ public abstract class EntityRenderMixin<T extends Entity> {
 
         if (StaminaConfig.INSTANCE.getConfig().textStyle == TextStyle.SHADOW) {
             //x - 1.0F, this.y + 9.0F, this.x + 1.0F, this.y - 1.0F
-            ms.translate(0, 0, StaminaConfig.INSTANCE.getConfig().zAxisOffset);
-            textRenderer.draw(ms, text, yeah, yeah, convertToShadow(col, 0.25F, bl ? 1 : 0.125F));
-            ms.translate(0, 0, StaminaConfig.INSTANCE.getConfig().zAxisOffset);
-            textRenderer.draw(text, 0, 0, convertToShadow(col, 1F, bl ? 1 : 0.125F), false, ms.peek().getPositionMatrix(), vertexConsumers, bl ? TextRenderer.TextLayerType.NORMAL : TextRenderer.TextLayerType.SEE_THROUGH, 0x00000000, LightmapTextureManager.MAX_LIGHT_COORDINATE);
-        } else if (StaminaConfig.INSTANCE.getConfig().textStyle == TextStyle.OUTLINE) {
+            textRenderer.draw(ms, text, yeah, yeah, bgCol);
+        }
+        ms.translate(0, 0, StaminaConfig.INSTANCE.getConfig().zAxisOffset);
+        textRenderer.draw(text, 0, 0, convertToShadow(col, 1F, bl ? 1 : 0.125F), false, ms.peek().getPositionMatrix(), vertexConsumers, bl ? TextRenderer.TextLayerType.NORMAL : TextRenderer.TextLayerType.SEE_THROUGH, 0x00000000, LightmapTextureManager.MAX_LIGHT_COORDINATE);
+        if (StaminaConfig.INSTANCE.getConfig().textStyle == TextStyle.OUTLINE) {
             //70x9 0-9
             textRenderer.draw(text, 0, 0, convertToShadow(col, 1F, bl ? 1 : 0.125F), false, ms.peek().getPositionMatrix(), vertexConsumers, bl ? TextRenderer.TextLayerType.NORMAL : TextRenderer.TextLayerType.SEE_THROUGH, 0x00000000, LightmapTextureManager.MAX_LIGHT_COORDINATE);
             drawCustomOutline(ms, text, bgCol);
@@ -340,6 +343,7 @@ public abstract class EntityRenderMixin<T extends Entity> {
             fillFloat(matrices, x + width - thickness, y - thickness, x + tempWidth, y + height + thickness, color);
         }
     }
+
     @Unique
     private static void drawBorderSpecial(MatrixStack matrices, float x, float y, float width, float height, int color, float thickness) {
         float tempWidth = (width + thickness);
@@ -351,7 +355,7 @@ public abstract class EntityRenderMixin<T extends Entity> {
         //left
         fillFloat(matrices, x - thickness, y + thickness, x + thickness, y + height - thickness, color);
         //right
-            fillFloat(matrices, x + width - thickness, y + thickness, x + tempWidth, y + height - thickness, color);
+        fillFloat(matrices, x + width - thickness, y + thickness, x + tempWidth, y + height - thickness, color);
     }
 
 
