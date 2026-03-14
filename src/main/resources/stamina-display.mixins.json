@@ -3,17 +3,16 @@
   "package": "me.noobilybridge.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "ChatHudMixin"
   ],
   "injectors": {
     "defaultRequire": 1
   },
   "client": [
     "BossBarAccessor",
-    "EntityRenderDispatcherMixin",
-    "EntityRendererInvoker",
     "EntityRenderMixin",
     "InGameHudMixin",
     "LightmapTextureManagerAccessor",
-    "YaclScreenMixin"
+    "PackScreenMixin"
   ]
 }

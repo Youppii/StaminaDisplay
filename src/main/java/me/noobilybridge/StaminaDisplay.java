@@ -6,27 +6,40 @@ import com.google.gson.GsonBuilder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.isxander.yacl3.config.GsonConfigInstance;
 import me.noobilybridge.config.StaminaConfig;
+import me.noobilybridge.mixin.BossBarAccessor;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.hud.ClientBossBar;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
+import net.minecraft.client.network.ClientLoginNetworkHandler;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.render.*;
 import net.minecraft.client.render.block.entity.EndPortalBlockEntityRenderer;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.boss.BossBar;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Pair;
 import net.minecraft.util.math.ColorHelper;
 import net.minecraft.util.math.MathHelper;
 import org.joml.Matrix4f;
+import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Unique;
 
 import java.awt.*;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -35,10 +48,15 @@ public class StaminaDisplay implements ClientModInitializer {
     //Left - Stamina
     //Right - Animation progress
     public static Map<AbstractClientPlayerEntity, Pair<Float, Float>> staminaValues = new HashMap<>();
-    public static Map<AbstractClientPlayerEntity, Pair<Integer, Color>> teams = new HashMap<>();
-
+    public static Map<AbstractClientPlayerEntity, Integer> teams = new HashMap<>();
+    public static Color homeColor = Color.WHITE;
+    public static Color awayColor = Color.WHITE;
+    public static boolean modAllowed = true;
+    public static boolean gameActive = false;
+    public static boolean modEnabled = true;
     public static float clientStamina = 0F;
-    public static KeyBinding toggleNametags;
+    public static KeyBinding toggleMod;
+    public static KeyBinding toggleBars;
     public static float clientAnimationProgress = 0F;
     public static Gson gson = new GsonBuilder()
             .registerTypeHierarchyAdapter(Text.class, new Text.Serializer())
@@ -52,20 +70,84 @@ public class StaminaDisplay implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         StaminaConfig.INSTANCE.load();
+        toggleMod = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.staminadisplay.toggleMod", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_BACKSLASH, "Stamina Display"));
+        toggleBars = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.staminadisplay.toggleBars", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_EQUAL, "Stamina Display"));
         if (StaminaConfig.INSTANCE.getConfig().iceTranslucencyDisable) {
             BlockRenderLayerMap.INSTANCE.putBlocks(RenderLayer.getSolid(), Blocks.ICE, Blocks.PACKED_ICE, Blocks.FROSTED_ICE, Blocks.BLUE_ICE);
         }
+//        ClientPlayConnectionEvents.JOIN.register((clientPlayNetworkHandler, packetSender, minecraftClient) -> {
+//            modAllowed = Permissions.check(minecraftClient.player, "blockey.mods.stamdisplay.v1");
+//        });
         WorldRenderEvents.START.register(worldRenderContext -> {
-            //TODO
-//            if (MinecraftClient.getInstance().player.getHungerManager().getFoodLevel() == 0) {
-//                clientStamina = 0F;
-//            } else {
-//                clientStamina = (float) ease(clientStamina, MinecraftClient.getInstance().player.getHungerManager().getFoodLevel(), StaminaConfig.INSTANCE.getConfig().animationSpeed);
-//            }
-            clientStamina = (float) ease(clientStamina, getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(MinecraftClient.getInstance().player.getUuid())), StaminaConfig.INSTANCE.getConfig().animationSpeed);
-            clientAnimationProgress = (float) StaminaDisplay.ease(clientAnimationProgress, getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(MinecraftClient.getInstance().player.getUuid())) == 0 ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed);
+
+            for (BossBar clientBossBar : ((BossBarAccessor) MinecraftClient.getInstance().inGameHud.getBossBarHud()).getBossBars().values()) {
+                try {
+                    homeColor = new Color(clientBossBar.getName().getSiblings().get(3).getSiblings().get(0).getStyle().getColor().getRgb());
+                    awayColor = new Color(clientBossBar.getName().getSiblings().get(1).getSiblings().get(0).getStyle().getColor().getRgb());
+                    gameActive = true;
+                    break;
+                } catch (Exception e) {
+                    gameActive = false;
+                }
+            }
+            boolean yeah = MinecraftClient.getInstance().player.hasVehicle();
+            clientStamina = (float) ease(clientStamina, yeah ? 0 : MinecraftClient.getInstance().player.getHungerManager().getFoodLevel(), StaminaConfig.INSTANCE.getConfig().animationSpeed);
+            clientAnimationProgress = (float) StaminaDisplay.ease(clientAnimationProgress, yeah || !modEnabled || !gameActive ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed);
         });
-//        toggleNametags = KeyBindingHelper.registerKeyBinding(new KeyBinding("yeah", InputUtil.Type.KEYSYM, GLFW.));
+        ClientTickEvents.END_CLIENT_TICK.register((client) -> {
+            while (toggleMod.wasPressed()) {
+                modEnabled = !modEnabled;
+            }
+            while (toggleBars.wasPressed()) {
+                StaminaConfig.INSTANCE.getConfig().renderBar = !StaminaConfig.INSTANCE.getConfig().renderBar;
+            }
+        });
+    }
+
+    public static int getTeam(AbstractClientPlayerEntity entity) {
+        if (teams.containsKey(entity)) {
+            return teams.get(entity);
+        }
+        return -1;
+    }
+
+    @Unique
+    public static int getTeamFromTablist(PlayerListEntry info) {
+        /*
+        0 - home
+        1 - away
+        -1 - neither
+         */
+        if(info == null){
+            return -1;
+        }
+        Text displayName = info.getDisplayName();
+        try {
+        if (displayName != null) {
+            switch (displayName.getSiblings().get(2).getStyle().getColor().getName()) {
+                case "yellow" -> {
+                    return 1;
+                }
+                case "blue" -> {
+                    return 0;
+                }
+                //TODO:
+                case "gold" -> {
+                    return -1;
+                }
+                case "red" -> {
+                    return -1;
+                }
+                case "white" -> {
+                    return -1;
+                }
+            }
+        }
+        }
+        catch (Exception ignored) {
+            return -1;
+        }
+        return -1;
     }
 
     public static float getStamina(Entity e) {
@@ -73,7 +155,7 @@ public class StaminaDisplay implements ClientModInitializer {
             return clientStamina;
         }
         if (!staminaValues.containsKey(e)) {
-            return -1;
+            return 0;
         }
         return MathHelper.clamp(StaminaDisplay.staminaValues.get(e).getLeft() - StaminaConfig.INSTANCE.getConfig().minStamina, 0, 20);
     }
@@ -93,14 +175,20 @@ public class StaminaDisplay implements ClientModInitializer {
     }
 
     public static void updateStaminaForEntity(Entity entity) {
+        boolean yeah = entity.hasVehicle();
         int staminaVal = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
         StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, new Pair<>((float) staminaVal, 0F));
         float lastStamina = StaminaDisplay.staminaValues.get(entity).getLeft();
-        StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, new Pair<>((float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed), (float) StaminaDisplay.ease(staminaValues.get(entity).getRight(), staminaVal == 0 ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed)));
+        StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, new Pair<>((float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed),
+                (float) StaminaDisplay.ease(staminaValues.get(entity).getRight(), yeah || !modEnabled || !gameActive ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed)));
     }
 
     public static float getMaxStamina() {
         return MathHelper.clamp(20 - StaminaConfig.INSTANCE.getConfig().minStamina, 1, 20);
+    }
+
+    public static int getColor(Color col, Color light) {
+        return ColorHelper.Argb.getArgb(col.getAlpha(), (int) ((col.getRed() / 255F) * (light.getRed() / 255F) * 255), (int) ((col.getGreen() / 255F) * (light.getGreen() / 255F) * 255), (int) ((col.getBlue() / 255F) * (light.getBlue() / 255F) * 255));
     }
 
     public static int getColor(Color col) {
@@ -141,6 +229,7 @@ public class StaminaDisplay implements ClientModInitializer {
     public static void fillFloat(MatrixStack matrices, float x1, float y1, float x2, float y2, int color) {
         BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        RenderSystem.enableBlend();
         bufferBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
         Matrix4f matrix4f = matrices.peek().getPositionMatrix();
         if (x1 < x2) {
@@ -166,103 +255,8 @@ public class StaminaDisplay implements ClientModInitializer {
         BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
     }
 
-    public static void renderRoundedQuadInternal(Matrix4f matrix, double fromX, double fromY, double toX, double toY, double samples, int light, boolean outline, int startCol, int endCol, boolean verticalGradient, float thickness, boolean evilmode) {
-        RenderSystem.setShader(GameRenderer::getPositionColorLightmapProgram);
-        BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
-        float startA = ((startCol >> 24) & 0xFF) / 255f;
-        float startR = ((startCol >> 16) & 0xFF) / 255f;
-        float startG = ((startCol >> 8) & 0xFF) / 255f;
-        float startB = (startCol & 0xFF) / 255f;
 
-        float endA = ((endCol >> 24) & 0xFF) / 255f;
-        float endR = ((endCol >> 16) & 0xFF) / 255f;
-        float endG = ((endCol >> 8) & 0xFF) / 255f;
-        float endB = (endCol & 0xFF) / 255f;
-        double radius = MathHelper.lerp(StaminaConfig.INSTANCE.getConfig().cornerRounding, 0, Math.min(Math.abs(toY - fromY), Math.abs(toX - fromX)) / 2);
-        if (outline) {
-            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR_LIGHT);
-
-            double[][] map = new double[][]{
-                    new double[]{toX - radius, toY - radius, radius},
-                    new double[]{toX - radius, fromY + radius, radius},
-                    new double[]{fromX + radius, fromY + radius, radius},
-                    new double[]{fromX + radius, toY - radius, radius}
-            };
-
-            for (int i = 0; i < 4; i++) {
-                double[] current = map[i];
-                double rad = current[2];
-                double innerRad = Math.max(0, rad - thickness);
-
-                for (double r = i * 90d; r <= 360 / 4d + i * 90d; r += 90 / samples) {
-                    float rad1 = (float) Math.toRadians(r);
-                    float sin = (float) Math.sin(rad1);
-                    float cos = (float) Math.cos(rad1);
-
-                    // Outer vertex
-                    float x = (float) current[0] + sin * (float) innerRad;
-                    float y = (float) current[1] + cos * (float) innerRad;
-                    float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-                    bufferBuilder.vertex(matrix, x, y, 0)
-                            .color(color[0], color[1], color[2], color[3]).light(light).next();
-
-
-                    x = (float) current[0] + sin * (float) rad;
-                    y = (float) current[1] + cos * (float) rad;
-                    color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-                    bufferBuilder.vertex(matrix, x, y, 0)
-                            .color(color[0], color[1], color[2], color[3]).light(light).next();
-                }
-            }
-            float rad1 = (float) Math.toRadians(0);
-            double rad = map[0][2];
-            double innerRad = Math.max(0, rad - thickness);
-            float[] color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-            bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, 0)
-                    .color(color[0], color[1], color[2], color[3]).light(light).next();
-            color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-            bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, 0)
-                    .color(color[0], color[1], color[2], color[3]).light(light).next();
-        } else {
-            if(evilmode){
-                RenderSystem.setShader(GameRenderer::getRenderTypeEndGatewayProgram);
-                RenderSystem.setShaderTexture(0,EndPortalBlockEntityRenderer.SKY_TEXTURE);
-                RenderSystem.setShaderTexture(1,EndPortalBlockEntityRenderer.PORTAL_TEXTURE);
-            }
-            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR_LIGHT);
-            double[][] map = new double[][]{
-                    new double[]{toX - radius, toY - radius, radius},
-                    new double[]{toX - radius, fromY + radius, radius},
-                    new double[]{fromX + radius, fromY + radius, radius},
-                    new double[]{fromX + radius, toY - radius, radius}
-            };
-            for (int i = 0; i < 4; i++) {
-                double[] current = map[i];
-                double rad = current[2];
-                for (double r = i * 90d; r < 360 / 4d + i * 90d; r += 90 / samples) {
-                    float rad1 = (float) Math.toRadians(r);
-                    float sin = (float) (Math.sin(rad1) * rad);
-                    float cos = (float) (Math.cos(rad1) * rad);
-                    float x = (float) current[0] + sin;
-                    float y = (float) current[1] + cos;
-
-                    float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-                    bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
-                }
-                float rad1 = (float) Math.toRadians(360 / 4d + i * 90d);
-                float sin = (float) (Math.sin(rad1) * rad);
-                float cos = (float) (Math.cos(rad1) * rad);
-                float x = (float) current[0] + sin;
-                float y = (float) current[1] + cos;
-
-                float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-                bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
-            }
-        }
-        BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
-    }
-
-    public static void renderRoundedQuad(Matrix4f matrix, double fromX, double fromY, double toX, double toY, double samples, int light, boolean outline, int startCol, int endCol, boolean verticalGradient, float thickness, boolean evilmode) {
+    public static void renderRoundedQuad(Matrix4f matrix, double fromX, double fromY, double toX, double toY, double samples, boolean outline, int startCol, int endCol, boolean verticalGradient, float thickness, boolean evilmode) {
         float startA = ((startCol >> 24) & 0xFF) / 255f;
         float startR = ((startCol >> 16) & 0xFF) / 255f;
         float startG = ((startCol >> 8) & 0xFF) / 255f;
@@ -273,15 +267,15 @@ public class StaminaDisplay implements ClientModInitializer {
         float endG = ((endCol >> 8) & 0xFF) / 255f;
         float endB = (endCol & 0xFF) / 255f;
 
-        if(startA == 0 && endA == 0){
+        if (startA == 0 && endA == 0) {
             return;
         }
 
-        RenderSystem.setShader(GameRenderer::getPositionColorLightmapProgram);
+        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
         BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
         double radius = MathHelper.lerp(StaminaConfig.INSTANCE.getConfig().cornerRounding, 0, Math.min(Math.abs(toY - fromY), Math.abs(toX - fromX)) / 2);
         if (outline) {
-            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR_LIGHT);
+            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
 
             double[][] map = new double[][]{
                     new double[]{toX - radius, toY - radius, radius},
@@ -305,14 +299,14 @@ public class StaminaDisplay implements ClientModInitializer {
                     float y = (float) current[1] + cos * (float) innerRad;
                     float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
                     bufferBuilder.vertex(matrix, x, y, 0)
-                            .color(color[0], color[1], color[2], color[3]).light(light).next();
+                            .color(color[0], color[1], color[2], color[3]).next();
 
 
                     x = (float) current[0] + sin * (float) rad;
                     y = (float) current[1] + cos * (float) rad;
                     color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
                     bufferBuilder.vertex(matrix, x, y, 0)
-                            .color(color[0], color[1], color[2], color[3]).light(light).next();
+                            .color(color[0], color[1], color[2], color[3]).next();
 
                     // Inner vertex
                 }
@@ -324,18 +318,18 @@ public class StaminaDisplay implements ClientModInitializer {
             double innerRad = Math.max(0, rad - thickness);
             float[] color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
             bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) innerRad, (float) map[0][1] + (float) Math.cos(rad1) * (float) innerRad, 0)
-                    .color(color[0], color[1], color[2], color[3]).light(light).next();
+                    .color(color[0], color[1], color[2], color[3]).next();
             color = getGradientColor((float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
             bufferBuilder.vertex(matrix, (float) map[0][0] + (float) Math.sin(rad1) * (float) rad, (float) map[0][1] + (float) Math.cos(rad1) * (float) rad, 0)
-                    .color(color[0], color[1], color[2], color[3]).light(light).next();
+                    .color(color[0], color[1], color[2], color[3]).next();
         } else {
             // Draw filled quad using TRIANGLE_FAN
-            if(evilmode){
+            if (evilmode) {
                 RenderSystem.setShader(GameRenderer::getRenderTypeEndGatewayProgram);
-                RenderSystem.setShaderTexture(0,EndPortalBlockEntityRenderer.SKY_TEXTURE);
-                RenderSystem.setShaderTexture(1,EndPortalBlockEntityRenderer.PORTAL_TEXTURE);
+                RenderSystem.setShaderTexture(0, EndPortalBlockEntityRenderer.SKY_TEXTURE);
+                RenderSystem.setShaderTexture(1, EndPortalBlockEntityRenderer.PORTAL_TEXTURE);
             }
-            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR_LIGHT);
+            bufferBuilder.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
             double[][] map = new double[][]{
                     new double[]{toX - radius, toY - radius, radius},
                     new double[]{toX - radius, fromY + radius, radius},
@@ -354,7 +348,7 @@ public class StaminaDisplay implements ClientModInitializer {
                     float y = (float) current[1] + cos;
 
                     float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-                    bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
+                    bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).next();
                 }
                 float rad1 = (float) Math.toRadians(360 / 4d + i * 90d);
                 float sin = (float) (Math.sin(rad1) * rad);
@@ -363,7 +357,7 @@ public class StaminaDisplay implements ClientModInitializer {
                 float y = (float) current[1] + cos;
 
                 float[] color = getGradientColor(x, y, fromX, fromY, toX, toY, startR, startG, startB, endR, endG, endB, startA, endA, verticalGradient);
-                bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).light(light).next();
+                bufferBuilder.vertex(matrix, x, y, 0).color(color[0], color[1], color[2], color[3]).next();
             }
         }
         BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
