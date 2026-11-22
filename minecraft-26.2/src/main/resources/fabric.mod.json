@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "stamina-display",
+  "version": "${version}",
+  "name": "Stamina Display",
+  "description": "Client-side Stamina Display for Minecraft 26.2",
+  "authors": ["Tektonikal", "Looc", "Youppi", "noobilybridge"],
+  "license": "CC0-1.0",
+  "icon": "assets/stamina-display/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "modmenu": ["me.noobilybridge.config26.ModMenuIntegration26"],
+    "client": ["me.noobilybridge.StaminaDisplay26"]
+  },
+  "mixins": ["stamina-display-26.2.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": "*",
+    "yet_another_config_lib_v3": "*"
+  },
+  "suggests": {
+    "modmenu": ">=20.0.3"
+  }
+}

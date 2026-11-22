@@ -14,7 +14,8 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+
+
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -63,7 +64,6 @@ public class StaminaDisplay implements ClientModInitializer {
     public static boolean openConfig = false;
     public static Gson gson = new GsonBuilder()
             .registerTypeHierarchyAdapter(Text.class, new Text.Serializer())
-            .registerTypeHierarchyAdapter(Style.class, new Style.Serializer())
             .registerTypeHierarchyAdapter(Color.class, new GsonConfigInstance.ColorTypeAdapter())
             .serializeNulls()
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
@@ -88,7 +88,6 @@ public class StaminaDisplay implements ClientModInitializer {
         });
 
         WorldRenderEvents.START.register(worldRenderContext -> {
-
             for (BossBar clientBossBar : ((BossBarAccessor) MinecraftClient.getInstance().inGameHud.getBossBarHud()).getBossBars().values()) {
                 try {
                     homeColor = new Color(clientBossBar.getName().getSiblings().get(3).getSiblings().get(0).getStyle().getColor().getRgb());
@@ -99,9 +98,19 @@ public class StaminaDisplay implements ClientModInitializer {
                     gameActive = false;
                 }
             }
-            boolean yeah = MinecraftClient.getInstance().player.hasVehicle();
-            clientStamina = (float) ease(clientStamina, yeah ? 0 : MinecraftClient.getInstance().player.getHungerManager().getFoodLevel(), StaminaConfig.INSTANCE.getConfig().animationSpeed);
-            clientAnimationProgress = (float) StaminaDisplay.ease(clientAnimationProgress, yeah || !modEnabled || !gameActive ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed);
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client.player == null || client.getNetworkHandler() == null) {
+                clientAnimationProgress = 0F;
+                staminaValues.clear();
+                teams.clear();
+                return;
+            }
+            boolean mounted = client.player.hasVehicle();
+            float stamina = mounted
+                    ? getStaminaFromTablist(client.getNetworkHandler().getPlayerListEntry(client.player.getUuid()))
+                    : client.player.getHungerManager().getFoodLevel();
+            clientStamina = (float) ease(clientStamina, stamina, StaminaConfig.INSTANCE.getConfig().animationSpeed);
+            clientAnimationProgress = (float) StaminaDisplay.ease(clientAnimationProgress, !modEnabled || !gameActive ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed);
         });
         ClientTickEvents.END_CLIENT_TICK.register((client) -> {
             if (openConfig) {
@@ -187,12 +196,11 @@ public class StaminaDisplay implements ClientModInitializer {
     }
 
     public static void updateStaminaForEntity(Entity entity) {
-        boolean yeah = entity.hasVehicle();
         int staminaVal = getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(entity.getUuid()));
         StaminaDisplay.staminaValues.putIfAbsent((AbstractClientPlayerEntity) entity, new Pair<>((float) staminaVal, 0F));
         float lastStamina = StaminaDisplay.staminaValues.get(entity).getLeft();
         StaminaDisplay.staminaValues.put((AbstractClientPlayerEntity) entity, new Pair<>((float) StaminaDisplay.ease(lastStamina, staminaVal, StaminaConfig.INSTANCE.getConfig().animationSpeed),
-                (float) StaminaDisplay.ease(staminaValues.get(entity).getRight(), yeah || !modEnabled || !gameActive ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed)));
+                (float) StaminaDisplay.ease(staminaValues.get(entity).getRight(), !modEnabled || !gameActive ? 0 : 1, StaminaConfig.INSTANCE.getConfig().animationSpeed)));
     }
 
     public static float getMaxStamina() {

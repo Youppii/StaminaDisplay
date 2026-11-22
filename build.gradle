@@ -21,6 +21,13 @@ repositories {
         url = "https://api.modrinth.com/maven"
     }
     maven {
+        url = "https://maven.nucleoid.xyz/"
+    }
+    maven {
+        name 'Quilt Maven'
+        url 'https://maven.quiltmc.org/repository/release'
+    }
+    maven {
         name 'Xander Maven'
         url 'https://maven.isxander.dev/releases'
     }
@@ -44,11 +51,7 @@ dependencies {
     modImplementation("com.terraformersmc:modmenu:${project.modmenu_version}")
     // Fabric API. This is technically optional, but you probably want it anyway.
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-    modImplementation("dev.isxander.yacl:yet-another-config-lib-fabric:${project.yacl_version}") {
-        exclude(group: "org.quiltmc.parsers")
-        exclude(group: "com.twelvemonkeys.common")
-        exclude(group: "com.twelvemonkeys.imageio")
-    }
+    modImplementation "dev.isxander:yet-another-config-lib:${project.yacl_version}"
 }
 
 processResources {

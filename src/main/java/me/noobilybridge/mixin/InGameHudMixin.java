@@ -5,7 +5,7 @@ import me.noobilybridge.StaminaDisplay;
 import me.noobilybridge.config.StaminaConfig;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawableHelper;
+import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.LightmapTextureManager;
@@ -20,7 +20,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.awt.*;
 
 import static me.noobilybridge.StaminaDisplay.*;
-import static net.minecraft.client.gui.DrawableHelper.GUI_ICONS_TEXTURE;
 
 
 @Mixin(InGameHud.class)
@@ -43,8 +42,9 @@ public abstract class InGameHudMixin {
             method = "renderStatusBars",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/util/profiler/Profiler;swap(Ljava/lang/String;)V", args = "ldc=food")
     )
-    private void renderCustomFood(MatrixStack matrices, CallbackInfo ci) {
+    private void renderCustomFood(DrawContext context, CallbackInfo ci) {
         if (StaminaConfig.INSTANCE.getConfig().customHungerBar) {
+            MatrixStack matrices = context.getMatrices();
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             MinecraftClient.getInstance().gameRenderer.getLightmapTextureManager().enable();
@@ -69,8 +69,7 @@ public abstract class InGameHudMixin {
                 if(MinecraftClient.getInstance().player.hasVehicle()){
                     text = String.valueOf(StaminaDisplay.getStaminaFromTablist(MinecraftClient.getInstance().getNetworkHandler().getPlayerListEntry(MinecraftClient.getInstance().player.getUuid())));
                 }
-                DrawableHelper.drawCenteredTextWithShadow(matrices, MinecraftClient.getInstance().textRenderer, text, 0, -getTextRenderer().fontHeight / 2, getColor(StaminaConfig.INSTANCE.getConfig().barNumberColor));
-                RenderSystem.setShaderTexture(0, GUI_ICONS_TEXTURE);
+                context.drawCenteredTextWithShadow(MinecraftClient.getInstance().textRenderer, text, 0, -getTextRenderer().fontHeight / 2, getColor(StaminaConfig.INSTANCE.getConfig().barNumberColor));
             }
             matrices.pop();
         }

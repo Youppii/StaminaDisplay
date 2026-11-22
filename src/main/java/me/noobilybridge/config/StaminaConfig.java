@@ -152,6 +152,7 @@ public class StaminaConfig {
     public float barNumberScale = 0.5F;
 
 
+
     public static Screen getScreen(Screen parent) {
         return YetAnotherConfigLib.create(INSTANCE, (defaults, config, builder) -> builder
                         .title(Text.of("Stamina Display"))

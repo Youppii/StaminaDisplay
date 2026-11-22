@@ -7,7 +7,6 @@ import me.noobilybridge.config.StaminaConfig;
 import me.noobilybridge.config.TextStyle;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawableHelper;
 import net.minecraft.client.gui.hud.ClientBossBar;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.*;
@@ -200,7 +199,8 @@ public abstract class EntityRenderMixin<T extends Entity> {
 
         if (StaminaConfig.INSTANCE.getConfig().textStyle == TextStyle.SHADOW) {
             //x - 1.0F, this.y + 9.0F, this.x + 1.0F, this.y - 1.0F
-            textRenderer.draw(ms, text, yeah, yeah, bgCol);
+            textRenderer.draw(text, yeah, yeah, bgCol, true, ms.peek().getPositionMatrix(), vertexConsumers,
+                    bl ? TextRenderer.TextLayerType.NORMAL : TextRenderer.TextLayerType.SEE_THROUGH, 0, LightmapTextureManager.MAX_LIGHT_COORDINATE);
         }
         ms.translate(0, 0, StaminaConfig.INSTANCE.getConfig().zAxisOffset);
         textRenderer.draw(text, 0, 0, convertToShadow(col, 1F, bl ? 1 : 0.125F), false, ms.peek().getPositionMatrix(), vertexConsumers, bl ? TextRenderer.TextLayerType.NORMAL : TextRenderer.TextLayerType.SEE_THROUGH, 0x00000000, LightmapTextureManager.MAX_LIGHT_COORDINATE);
